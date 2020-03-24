@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "types.h"
+#include "os/error.h"
 #include "os/math.h"
 #include "os/strings.h"
 
@@ -91,6 +92,7 @@ void GameLoop_Structure(void)
 
 		s = Structure_Find(&find);
 		if (s == NULL) break;
+		if (s->o.type == STRUCTURE_SLAB_1x1 || s->o.type == STRUCTURE_SLAB_2x2 || s->o.type == STRUCTURE_WALL) continue;
 
 		si = &g_table_structureInfo[s->o.type];
 		h  = House_Get_ByIndex(s->o.houseID);
@@ -219,9 +221,9 @@ void GameLoop_Structure(void)
 
 							if (s->o.houseID == g_playerHouseID) {
 								if (s->o.type != STRUCTURE_BARRACKS && s->o.type != STRUCTURE_WOR_TROOPER) {
-									uint16 stringID = 0x83; /* "is completed and awaiting orders." */
-									if (s->o.type == STRUCTURE_HIGH_TECH) stringID = 0x81; /* "is complete." */
-									if (s->o.type == STRUCTURE_CONSTRUCTION_YARD) stringID = 0x82; /* "is completed and ready to place." */
+									uint16 stringID = STR_IS_COMPLETED_AND_AWAITING_ORDERS;
+									if (s->o.type == STRUCTURE_HIGH_TECH) stringID = STR_IS_COMPLETE;
+									if (s->o.type == STRUCTURE_CONSTRUCTION_YARD) stringID = STR_IS_COMPLETED_AND_READY_TO_PLACE;
 
 									GUI_DisplayText("%s %s", 0, String_Get_ByIndex(oi->stringID_full), String_Get_ByIndex(stringID));
 
@@ -262,7 +264,7 @@ void GameLoop_Structure(void)
 					} else {
 						/* Out of money means the building gets put on hold */
 						if (s->o.houseID == g_playerHouseID) {
-							s->o.type |= 0x4000;
+							s->o.flags.s.onHold = true;
 							GUI_DisplayText(String_Get_ByIndex(STR_INSUFFICIENT_FUNDS_CONSTRUCTION_IS_HALTED), 0);
 						}
 					}
@@ -365,7 +367,7 @@ uint8 Structure_StringToType(const char *name)
  * @param index The new index of the Structure, or STRUCTURE_INDEX_INVALID to assign one.
  * @param typeID The type of the new Structure.
  * @param houseID The House of the new Structure.
- * @param var0C An unknown parameter.
+ * @param position The packed position where to place the Structure. If 0xFFFF, the Structure is not placed.
  * @return The new created Structure, or NULL if something failed.
  */
 Structure *Structure_Create(uint16 index, uint8 typeID, uint8 houseID, uint16 position)
@@ -383,7 +385,8 @@ Structure *Structure_Create(uint16 index, uint8 typeID, uint8 houseID, uint16 po
 	s->o.houseID            = houseID;
 	s->creatorHouseID       = houseID;
 	s->o.flags.s.isNotOnMap = true;
-	s->o.position.tile      = 0;
+	s->o.position.x         = 0;
+	s->o.position.y         = 0;
 	s->o.linkedID           = 0xFF;
 	s->state                = (g_debugScenario) ? STRUCTURE_STATE_IDLE : STRUCTURE_STATE_JUSTBUILT;
 
@@ -453,15 +456,15 @@ bool Structure_Place(Structure *s, uint16 position)
 			if (Structure_IsValidBuildLocation(position, STRUCTURE_WALL) == 0) return false;
 
 			t = &g_map[position];
-			t->groundSpriteID = g_wallSpriteID + 1;
+			t->groundTileID = g_wallTileID + 1;
 			/* ENHANCEMENT -- Dune2 wrongfully only removes the lower 2 bits, where the lower 3 bits are the owner. This is no longer visible. */
 			t->houseID  = s->o.houseID;
 
-			g_mapSpriteID[position] |= 0x8000;
+			g_mapTileID[position] |= 0x8000;
 
 			if (s->o.houseID == g_playerHouseID) Tile_RemoveFogInRadius(Tile_UnpackTile(position), 1);
 
-			if (Map_IsPositionUnveiled(position)) t->overlaySpriteID = 0;
+			if (Map_IsPositionUnveiled(position)) t->overlayTileID = 0;
 
 			Structure_ConnectWall(position, true);
 			Structure_Free(s);
@@ -480,14 +483,14 @@ bool Structure_Place(Structure *s, uint16 position)
 
 				if (Structure_IsValidBuildLocation(curPos, STRUCTURE_SLAB_1x1) == 0) continue;
 
-				t->groundSpriteID = g_builtSlabSpriteID;
+				t->groundTileID = g_builtSlabTileID;
 				t->houseID = s->o.houseID;
 
-				g_mapSpriteID[curPos] |= 0x8000;
+				g_mapTileID[curPos] |= 0x8000;
 
 				if (s->o.houseID == g_playerHouseID) Tile_RemoveFogInRadius(Tile_UnpackTile(curPos), 1);
 
-				if (Map_IsPositionUnveiled(curPos)) t->overlaySpriteID = 0;
+				if (Map_IsPositionUnveiled(curPos)) t->overlayTileID = 0;
 
 				Map_Update(curPos, 0, false);
 
@@ -502,14 +505,14 @@ bool Structure_Place(Structure *s, uint16 position)
 
 					if (Structure_IsValidBuildLocation(curPos, STRUCTURE_SLAB_1x1) == 0) continue;
 
-					t->groundSpriteID = g_builtSlabSpriteID;
+					t->groundTileID = g_builtSlabTileID;
 					t->houseID = s->o.houseID;
 
-					g_mapSpriteID[curPos] |= 0x8000;
+					g_mapTileID[curPos] |= 0x8000;
 
 					if (s->o.houseID == g_playerHouseID) {
 						Tile_RemoveFogInRadius(Tile_UnpackTile(curPos), 1);
-						t->overlaySpriteID = 0;
+						t->overlayTileID = 0;
 					}
 
 					Map_Update(curPos, 0, false);
@@ -527,7 +530,7 @@ bool Structure_Place(Structure *s, uint16 position)
 	validBuildLocation = Structure_IsValidBuildLocation(position, s->o.type);
 	if (validBuildLocation == 0 && s->o.houseID == g_playerHouseID && !g_debugScenario && g_validateStrictIfZero == 0) return false;
 
-	/* ENHACEMENT -- In Dune2, it only removes the fog around the top-left tile of a structure, leaving for big structures the right in the fog. */
+	/* ENHANCEMENT -- In Dune2, it only removes the fog around the top-left tile of a structure, leaving for big structures the right in the fog. */
 	if (!g_dune2_enhanced && s->o.houseID == g_playerHouseID) Tile_RemoveFogInRadius(Tile_UnpackTile(position), 2);
 
 	s->o.seenByHouses |= 1 << s->o.houseID;
@@ -536,8 +539,8 @@ bool Structure_Place(Structure *s, uint16 position)
 	s->o.flags.s.isNotOnMap = false;
 
 	s->o.position = Tile_UnpackTile(position);
-	s->o.position.s.x &= 0xFF00;
-	s->o.position.s.y &= 0xFF00;
+	s->o.position.x &= 0xFF00;
+	s->o.position.y &= 0xFF00;
 
 	s->rotationSpriteDiff = 0;
 	s->o.hitpoints  = si->o.hitpoints;
@@ -581,7 +584,7 @@ bool Structure_Place(Structure *s, uint16 position)
 
 			Unit_Remove(u);
 
-			/* ENHACEMENT -- In Dune2, it only removes the fog around the top-left tile of a structure, leaving for big structures the right in the fog. */
+			/* ENHANCEMENT -- In Dune2, it only removes the fog around the top-left tile of a structure, leaving for big structures the right in the fog. */
 			if (g_dune2_enhanced && s->o.houseID == g_playerHouseID) Tile_RemoveFogInRadius(Tile_UnpackTile(curPos), 2);
 
 		}
@@ -642,6 +645,7 @@ void Structure_CalculateHitpointsMax(House *h)
 
 		s = Structure_Find(&find);
 		if (s == NULL) return;
+		if (s->o.type == STRUCTURE_SLAB_1x1 || s->o.type == STRUCTURE_SLAB_2x2 || s->o.type == STRUCTURE_WALL) continue;
 
 		si = &g_table_structureInfo[s->o.type];
 
@@ -702,13 +706,19 @@ uint32 Structure_GetStructuresBuilt(House *h)
 	find.index   = 0xFFFF;
 	find.type    = 0xFFFF;
 
+	/* Recount windtraps after capture or loading old saved games. */
+	h->windtrapCount = 0;
+
 	while (true) {
 		Structure *s;
 
 		s = Structure_Find(&find);
 		if (s == NULL) break;
 		if (s->o.flags.s.isNotOnMap) continue;
+		if (s->o.type == STRUCTURE_SLAB_1x1 || s->o.type == STRUCTURE_SLAB_2x2 || s->o.type == STRUCTURE_WALL) continue;
 		result |= 1 << s->o.type;
+
+		if (s->o.type == STRUCTURE_WINDTRAP) h->windtrapCount++;
 	}
 
 	return result;
@@ -736,14 +746,14 @@ int16 Structure_IsValidBuildLocation(uint16 position, StructureType type)
 	isValid = true;
 	neededSlabs = 0;
 	for (i = 0; i < g_table_structure_layoutTileCount[si->layout]; i++) {
-		uint16 type;
+		uint16 lst;
 
 		curPos = position + layoutTile[i];
 
-		type = Map_GetLandscapeType(curPos);
+		lst = Map_GetLandscapeType(curPos);
 
 		if (g_debugScenario) {
-			if (!g_table_landscapeInfo[type].isValidForStructure2) {
+			if (!g_table_landscapeInfo[lst].isValidForStructure2) {
 				isValid = false;
 				break;
 			}
@@ -754,16 +764,16 @@ int16 Structure_IsValidBuildLocation(uint16 position, StructureType type)
 			}
 
 			if (si->o.flags.notOnConcrete) {
-				if (!g_table_landscapeInfo[type].isValidForStructure2 && g_validateStrictIfZero == 0) {
+				if (!g_table_landscapeInfo[lst].isValidForStructure2 && g_validateStrictIfZero == 0) {
 					isValid = false;
 					break;
 				}
 			} else {
-				if (!g_table_landscapeInfo[type].isValidForStructure && g_validateStrictIfZero == 0) {
+				if (!g_table_landscapeInfo[lst].isValidForStructure && g_validateStrictIfZero == 0) {
 					isValid = false;
 					break;
 				}
-				if (type != LST_CONCRETE_SLAB) neededSlabs++;
+				if (lst != LST_CONCRETE_SLAB) neededSlabs++;
 			}
 		}
 
@@ -776,7 +786,7 @@ int16 Structure_IsValidBuildLocation(uint16 position, StructureType type)
 	if (g_validateStrictIfZero == 0 && isValid && type != STRUCTURE_CONSTRUCTION_YARD && !g_debugScenario) {
 		isValid = false;
 		for (i = 0; i < 16; i++) {
-			uint16 offset, type;
+			uint16 offset, lst;
 			Structure *s;
 
 			offset = g_table_structure_layoutTilesAround[si->layout][i];
@@ -790,8 +800,8 @@ int16 Structure_IsValidBuildLocation(uint16 position, StructureType type)
 				break;
 			}
 
-			type = Map_GetLandscapeType(curPos);
-			if (type != LST_CONCRETE_SLAB && type != LST_WALL) continue;
+			lst = Map_GetLandscapeType(curPos);
+			if (lst != LST_CONCRETE_SLAB && lst != LST_WALL) continue;
 			if (g_map[curPos].houseID != g_playerHouseID) continue;
 
 			isValid = true;
@@ -820,12 +830,12 @@ void Structure_ActivateSpecial(Structure *s)
 	if (!h->flags.used) return;
 
 	switch (g_table_houseInfo[s->o.houseID].specialWeapon) {
-		case HOUSE_WEAPON_MISSLE: {
+		case HOUSE_WEAPON_MISSILE: {
 			Unit *u;
 			tile32 position;
 
-			position.s.x = 0xFFFF;
-			position.s.y = 0xFFFF;
+			position.x = 0xFFFF;
+			position.y = 0xFFFF;
 
 			g_validateStrictIfZero++;
 			u = Unit_Create(UNIT_INDEX_INVALID, UNIT_MISSILE_HOUSE, s->o.houseID, position, Tools_Random_256());
@@ -849,6 +859,7 @@ void Structure_ActivateSpecial(Structure *s)
 
 					sf = Structure_Find(&find);
 					if (sf == NULL) break;
+					if (sf->o.type == STRUCTURE_SLAB_1x1 || sf->o.type == STRUCTURE_SLAB_2x2 || sf->o.type == STRUCTURE_WALL) continue;
 
 					if (House_AreAllied(s->o.houseID, sf->o.houseID)) continue;
 
@@ -949,12 +960,12 @@ void Structure_RemoveFog(Structure *s)
 
 	si = &g_table_structureInfo[s->o.type];
 
-	position.tile = s->o.position.tile;
+	position = s->o.position;
 
 	/* ENHANCEMENT -- Fog is removed around the top left corner instead of the center of a structure. */
 	if (g_dune2_enhanced) {
-		position.s.x += 256 * (g_table_structure_layoutSize[si->layout].width  - 1) / 2;
-		position.s.y += 256 * (g_table_structure_layoutSize[si->layout].height - 1) / 2;
+		position.x += 256 * (g_table_structure_layoutSize[si->layout].width  - 1) / 2;
+		position.y += 256 * (g_table_structure_layoutSize[si->layout].height - 1) / 2;
 	}
 
 	Tile_RemoveFogInRadius(position, si->o.fogUncoverRadius);
@@ -1124,7 +1135,6 @@ bool Structure_IsUpgradable(Structure *s)
  */
 bool Structure_ConnectWall(uint16 position, bool recurse)
 {
-	static const int16 offset[] = { -64, 1, 64, -1 };
 	static const uint8 wall[] = {
 		 0,  3,  1,  2,  3,  3,  4,  5,  1,  6,  1,  7,  8,  9, 10, 11,
 		 1, 12,  1, 19,  1, 16,  1, 31,  1, 28,  1, 52,  1, 45,  1, 59,
@@ -1145,7 +1155,7 @@ bool Structure_ConnectWall(uint16 position, bool recurse)
 	};
 
 	uint16 bits = 0;
-	uint16 spriteID;
+	uint16 tileID;
 	bool isDestroyedWall;
 	uint8 i;
 	Tile *tile;
@@ -1153,7 +1163,7 @@ bool Structure_ConnectWall(uint16 position, bool recurse)
 	isDestroyedWall = Map_GetLandscapeType(position) == LST_DESTROYED_WALL;
 
 	for (i = 0; i < 4; i++) {
-		uint16 curPos = position + offset[i];
+		const uint16 curPos = position + g_table_mapDiff[i];
 
 		if (recurse && Map_GetLandscapeType(curPos) == LST_WALL) Structure_ConnectWall(curPos, false);
 
@@ -1170,13 +1180,13 @@ bool Structure_ConnectWall(uint16 position, bool recurse)
 
 	if (isDestroyedWall) return false;
 
-	spriteID = g_wallSpriteID + wall[bits] + 1;
+	tileID = g_wallTileID + wall[bits] + 1;
 
 	tile = &g_map[position];
-	if (tile->groundSpriteID == spriteID) return false;
+	if (tile->groundTileID == tileID) return false;
 
-	tile->groundSpriteID = spriteID;
-	g_mapSpriteID[position] |= 0x8000;
+	tile->groundTileID = tileID;
+	g_mapTileID[position] |= 0x8000;
 	Map_Update(position, 0, false);
 
 	return true;
@@ -1314,8 +1324,8 @@ void Structure_Remove(Structure *s)
 		t->hasStructure = false;
 
 		if (g_debugScenario) {
-			t->groundSpriteID = g_mapSpriteID[curPacked] & 0x1FF;
-			t->overlaySpriteID = 0;
+			t->groundTileID = g_mapTileID[curPacked] & 0x1FF;
+			t->overlayTileID = 0;
 		}
 	}
 
@@ -1432,7 +1442,7 @@ static void Structure_CancelBuild(Structure *s)
 bool Structure_BuildObject(Structure *s, uint16 objectType)
 {
 	const StructureInfo *si;
-	char *str;
+	const char *str;
 	Object *o;
 	ObjectInfo *oi;
 
@@ -1484,13 +1494,13 @@ bool Structure_BuildObject(Structure *s, uint16 objectType)
 
 			if (s->o.type == STRUCTURE_STARPORT) {
 				uint8 linkedID = 0xFF;
-				int16 loc60[UNIT_MAX];
+				int16 availableUnits[UNIT_MAX];
 				Unit *u;
-				bool loop = true;
+				bool loop;
 
-				memset(loc60, 0, UNIT_MAX * 2);
+				memset(availableUnits, 0, sizeof(availableUnits));
 
-				while (loop) {
+				do {
 					uint8 i;
 
 					loop = false;
@@ -1500,32 +1510,23 @@ bool Structure_BuildObject(Structure *s, uint16 objectType)
 
 						if (unitsAtStarport == 0) {
 							g_table_unitInfo[i].o.available = 0;
-							continue;
-						}
-
-						if (unitsAtStarport < 0) {
+						} else if (unitsAtStarport < 0) {
 							g_table_unitInfo[i].o.available = -1;
-							continue;
+						} else if (unitsAtStarport > availableUnits[i]) {
+							g_validateStrictIfZero++;
+							u = Unit_Allocate(UNIT_INDEX_INVALID, i, s->o.houseID);
+							g_validateStrictIfZero--;
+
+							if (u != NULL) {
+								loop = true;
+								u->o.linkedID = linkedID;
+								linkedID = u->o.index & 0xFF;
+								availableUnits[i]++;
+								g_table_unitInfo[i].o.available = (int8)availableUnits[i];
+							} else if (availableUnits[i] == 0) g_table_unitInfo[i].o.available = -1;
 						}
-
-						if (loc60[i] >= unitsAtStarport) continue;
-
-						g_validateStrictIfZero++;
-						u = Unit_Allocate(UNIT_INDEX_INVALID, i, s->o.houseID);
-						g_validateStrictIfZero--;
-
-						if (u != NULL) {
-							loop = true;
-							u->o.linkedID = linkedID;
-							linkedID = u->o.index & 0xFF;
-							loc60[i]++;
-							g_table_unitInfo[i].o.available = (int8)loc60[i];
-							continue;
-						}
-
-						if (loc60[i] == 0) g_table_unitInfo[i].o.available = -1;
 					}
-				}
+				} while (loop);
 
 				while (linkedID != 0xFF) {
 					u = Unit_Get_ByIndex(linkedID);
@@ -1604,7 +1605,8 @@ bool Structure_BuildObject(Structure *s, uint16 objectType)
 					g_validateStrictIfZero++;
 					{
 						tile32 tile;
-						tile.tile = 0xFFFFFFFF;
+						tile.x = 0xFFFF;
+						tile.y = 0xFFFF;
 						u = Unit_Create(UNIT_INDEX_INVALID, (uint8)objectType, s->o.houseID, tile, 0);
 					}
 					g_validateStrictIfZero--;
@@ -1643,7 +1645,8 @@ bool Structure_BuildObject(Structure *s, uint16 objectType)
 
 	if (s->o.type != STRUCTURE_CONSTRUCTION_YARD) {
 		tile32 tile;
-		tile.tile = 0xFFFFFFFF;
+		tile.x = 0xFFFF;
+		tile.y = 0xFFFF;
 
 		oi = &g_table_unitInfo[objectType].o;
 		o = &Unit_Create(UNIT_INDEX_INVALID, (uint8)objectType, s->o.houseID, tile, 0)->o;
@@ -1803,9 +1806,9 @@ void Structure_UpdateMap(Structure *s)
 		t->hasStructure = true;
 		t->index = s->o.index + 1;
 
-		t->groundSpriteID = iconMap[i] + s->rotationSpriteDiff;
+		t->groundTileID = iconMap[i] + s->rotationSpriteDiff;
 
-		if (Sprite_IsUnveiled(t->overlaySpriteID)) t->overlaySpriteID = 0;
+		if (Tile_IsUnveiled(t->overlayTileID)) t->overlayTileID = 0;
 
 		Map_Update(position, 0, false);
 	}
@@ -1989,7 +1992,7 @@ uint16 Structure_AI_PickNextToBuild(Structure *s)
 
 	if (s->o.type == STRUCTURE_CONSTRUCTION_YARD) {
 		for (i = 0; i < 5; i++) {
-			uint16 type = h->ai_structureRebuild[i][0];
+			type = h->ai_structureRebuild[i][0];
 
 			if (type == 0) continue;
 			if ((buildable & (1 << type)) == 0) continue;

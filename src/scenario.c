@@ -93,17 +93,17 @@ static void Scenario_Load_Houses(void)
 	if (h->unitCountMax == 0) {
 		PoolFindStruct find;
 		uint8 max;
-		House *h;
+		House *h2;
 
 		find.houseID = HOUSE_INVALID;
 		find.index   = 0xFFFF;
 		find.type    = 0xFFFF;
 
 		max = 80;
-		while ((h = House_Find(&find)) != NULL) {
+		while ((h2 = House_Find(&find)) != NULL) {
 			/* Skip the human controlled house */
-			if (h->flags.human) continue;
-			max -= h->unitCountMax;
+			if (h2->flags.human) continue;
+			max -= h2->unitCountMax;
 		}
 
 		h->unitCountMax = max;
@@ -261,6 +261,11 @@ static void Scenario_Load_Structure(const char *key, char *settings)
 	hitpoints = atoi(settings);
 	/* ENHANCEMENT -- Dune2 ignores the % hitpoints read from the scenario */
 	if (!g_dune2_enhanced) hitpoints = 256;
+	else if(hitpoints > 256) hitpoints = 256;
+	/* this is pointless to have more than 100% hitpoint, however ONE scenario
+	 * file has such "bug" : SCENH006.INI
+	 * ID001=Ordos,Const Yard,8421,936
+	 * ID000=Ordos,Light Fctry,14058,1064     */
 
 	/* Fourth value is the position of the structure */
 	settings = split + 1;
@@ -308,16 +313,16 @@ static void Scenario_Load_Map(const char *key, char *settings)
 	t->hasExplosion = (value & 0x80) != 0 ? true : false;
 
 	s = strtok(NULL, ",\r\n");
-	t->groundSpriteID = atoi(s) & 0x01FF;
-	if (g_mapSpriteID[packed] != t->groundSpriteID) g_mapSpriteID[packed] |= 0x8000;
+	t->groundTileID = atoi(s) & 0x01FF;
+	if (g_mapTileID[packed] != t->groundTileID) g_mapTileID[packed] |= 0x8000;
 
-	if (!t->isUnveiled) t->overlaySpriteID = g_veiledSpriteID;
+	if (!t->isUnveiled) t->overlayTileID = g_veiledTileID;
 }
 
 static void Scenario_Load_Map_Bloom(uint16 packed, Tile *t)
 {
-	t->groundSpriteID = g_bloomSpriteID;
-	g_mapSpriteID[packed] |= 0x8000;
+	t->groundTileID = g_bloomTileID;
+	g_mapTileID[packed] |= 0x8000;
 }
 
 static void Scenario_Load_Map_Field(uint16 packed, Tile *t)
@@ -326,14 +331,14 @@ static void Scenario_Load_Map_Field(uint16 packed, Tile *t)
 
 	/* Show where a field started in the preview mode by making it an odd looking sprite */
 	if (g_debugScenario) {
-		t->groundSpriteID = 0x01FF;
+		t->groundTileID = 0x01FF;
 	}
 }
 
 static void Scenario_Load_Map_Special(uint16 packed, Tile *t)
 {
-	t->groundSpriteID = g_bloomSpriteID + 1;
-	g_mapSpriteID[packed] |= 0x8000;
+	t->groundTileID = g_bloomTileID + 1;
+	g_mapTileID[packed] |= 0x8000;
 }
 
 static void Scenario_Load_Reinforcement(const char *key, char *settings)
@@ -390,8 +395,8 @@ static void Scenario_Load_Reinforcement(const char *key, char *settings)
 	/* ENHANCEMENT -- Dune2 makes a mistake in reading the '+', causing repeat to be always false */
 	if (!g_dune2_enhanced) repeat = false;
 
-	position.s.x = 0xFFFF;
-	position.s.y = 0xFFFF;
+	position.x = 0xFFFF;
+	position.y = 0xFFFF;
 	u = Unit_Create(UNIT_INDEX_INVALID, unitType, houseType, position, 0);
 	if (u == NULL) return;
 
@@ -480,7 +485,7 @@ static void Scenario_Load_MapParts(const char *key, void (*ptr)(uint16 packed, T
 	char *s;
 	char buf[128];
 
-	Ini_GetString("MAP", key, '\0', buf, 127, s_scenarioBuffer);
+	Ini_GetString("MAP", key, "", buf, 127, s_scenarioBuffer);
 
 	s = strtok(buf, ",\r\n");
 	while (s != NULL) {
@@ -523,7 +528,7 @@ bool Scenario_Load(uint16 scenarioID, uint8 houseID)
 	g_scenarioID = scenarioID;
 
 	/* Load scenario file */
-	sprintf(filename, "SCEN%c%03d.INI", g_table_houseInfo[houseID].name[0], scenarioID);
+	sprintf(filename, "SCEN%c%03hu.INI", g_table_houseInfo[houseID].name[0], scenarioID);
 	if (!File_Exists(filename)) return false;
 	s_scenarioBuffer = File_ReadWholeFile(filename);
 

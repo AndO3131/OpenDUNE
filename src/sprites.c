@@ -3,14 +3,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "multichar.h"
 #include "types.h"
 #include "os/common.h"
 #include "os/endian.h"
 #include "os/sleep.h"
 #include "os/strings.h"
+#include "os/error.h"
 
 #include "sprites.h"
 
+#include "opendune.h"
 #include "codec/format80.h"
 #include "file.h"
 #include "gfx.h"
@@ -25,21 +28,20 @@
 
 uint8 **g_sprites = NULL;
 static uint16 s_spritesCount = 0;
-uint8 *g_spriteBuffer;
 uint8 *g_iconRTBL = NULL;
 uint8 *g_iconRPAL = NULL;
-uint8 *g_spriteInfo = NULL;
+uint8 *g_tilesPixels = NULL;
 uint16 *g_iconMap = NULL;
 
 uint8 *g_fileRgnclkCPS = NULL;
 void *g_fileRegionINI = NULL;
 uint16 *g_regions = NULL;
 
-uint16 g_veiledSpriteID;
-uint16 g_bloomSpriteID;
-uint16 g_landscapeSpriteID;
-uint16 g_builtSlabSpriteID;
-uint16 g_wallSpriteID;
+uint16 g_veiledTileID;
+uint16 g_bloomTileID;
+uint16 g_landscapeTileID;
+uint16 g_builtSlabTileID;
+uint16 g_wallTileID;
 
 void *g_mouseSprite = NULL;
 void *g_mouseSpriteBuffer = NULL;
@@ -56,16 +58,16 @@ static bool s_iconLoaded = false;
  * @param index The index of the sprite to get.
  * @return The sprite.
  */
-static uint8 *Sprites_GetSprite(uint8 *buffer, uint16 index)
+static const uint8 *Sprites_GetSprite(const uint8 *buffer, uint16 index)
 {
 	uint32 offset;
 
 	if (buffer == NULL) return NULL;
-	if (*(uint16 *)buffer <= index) return NULL;
+	if (READ_LE_UINT16(buffer) <= index) return NULL;
 
 	buffer += 2;
 
-	offset = *(uint32*)(buffer + 4 * index);
+	offset = READ_LE_UINT32(buffer + 4 * index);
 
 	if (offset == 0) return NULL;
 
@@ -83,22 +85,58 @@ static void Sprites_Load(const char *filename)
 	uint8 *buffer;
 	uint16 count;
 	uint16 i;
+	uint16 size;
 
 	buffer = File_ReadWholeFile(filename);
 
-	count = *(uint16 *)buffer;
+	count = READ_LE_UINT16(buffer);
 
 	s_spritesCount += count;
 	g_sprites = (uint8 **)realloc(g_sprites, s_spritesCount * sizeof(uint8 *));
 
 	for (i = 0; i < count; i++) {
-		uint8 *src = Sprites_GetSprite(buffer, i);
+		const uint8 *src = Sprites_GetSprite(buffer, i);
 		uint8 *dst = NULL;
 
+		Debug("Sprites %-12s %3d : 0x%04x %2dx%2d %2d %5d %5d\n", filename, i,
+		      READ_LE_UINT16(src)/*Flags*/, READ_LE_UINT16(src+3)/*Width*/, src[2], /* height */
+		      src[5] /* height */, READ_LE_UINT16(src+6) /* packed size */, READ_LE_UINT16(src+8) /* decoded size */);
 		if (src != NULL) {
-			uint16 size = ((uint16 *)src)[3];
-			dst = (uint8 *)malloc(size);
-			memcpy(dst, src, size);
+			if (g_unpackSHPonLoad && (src[0] & 0x2) == 0) {
+				size = READ_LE_UINT16(src+8) + 10;
+				if (READ_LE_UINT16(src) & 0x1) {
+					size += 16;	/* 16 bytes more for the palette */
+				}
+				dst = (uint8 *)malloc(size);
+				if (dst == NULL) {
+					Error("Sprites_Load(%s) failed to allocate %u bytes\n", filename, size);
+				} else {
+					const uint8 *encoded_data = src;
+					uint8 *decoded_data = dst;
+					*decoded_data++ = *encoded_data++ | 0x2;	/* the sprite is not Format80 encoded any more */
+					memcpy(decoded_data, encoded_data, 5);
+					decoded_data += 5;
+					WRITE_LE_UINT16(decoded_data, size);  /* new packed size */
+					decoded_data += 2;
+					encoded_data += 7;
+					*decoded_data++ = *encoded_data++;    /* copy pixel size */
+					*decoded_data++ = *encoded_data++;
+					if (READ_LE_UINT16(src) & 0x1) {
+						memcpy(decoded_data, encoded_data, 16);	/* copy palette */
+						decoded_data += 16;
+						encoded_data += 16;
+					}
+					Format80_Decode(decoded_data, encoded_data, READ_LE_UINT16(src+8));
+				}
+			} else {
+				size = READ_LE_UINT16(src + 6);	/* "packed" size */
+				dst = (uint8 *)malloc(size);
+				if (dst == NULL) {
+					Error("Sprites_Load(%s) failed to allocate %u bytes\n", filename, size);
+				} else {
+					memcpy(dst, src, size);
+				}
+			}
 		}
 
 		g_sprites[s_spritesCount - count + i] = dst;
@@ -134,19 +172,6 @@ uint8 Sprite_GetHeight(uint8 *sprite)
 }
 
 /**
- * Gets the type of the given sprite.
- *
- * @param sprite The sprite.
- * @return The type.
- */
-uint16 Sprites_GetType(uint8 *sprite)
-{
-	if (sprite == NULL) return 0;
-
-	return *(uint16 *)sprite;
-}
-
-/**
  * Decodes an image.
  *
  * @param source The encoded image.
@@ -160,16 +185,16 @@ static uint32 Sprites_Decode(uint8 *source, uint8 *dest)
 	switch(*source) {
 		case 0x0:
 			source += 2;
-			size = *((uint32 *)source);
+			size = READ_LE_UINT32(source);
 			source += 4;
-			source += *((uint16 *)source);
+			source += READ_LE_UINT16(source);
 			source += 2;
 			memmove(dest, source, size);
 			break;
 
 		case 0x4:
 			source += 6;
-			source += *((uint16 *)source);
+			source += READ_LE_UINT16(source);
 			source += 2;
 			size = Format80_Decode(dest, source, 0xFFFF);
 			break;
@@ -182,15 +207,16 @@ static uint32 Sprites_Decode(uint8 *source, uint8 *dest)
 
 /**
  * Loads an ICN file.
+ * NOTE : should be called "tiles"
  *
  * @param filename The name of the file to load.
  * @param screenID The index of a memory block where to store loaded sprites.
  */
-static void Sprites_LoadICNFile(const char *filename)
+static void Tiles_LoadICNFile(const char *filename)
 {
 	uint8  fileIndex;
 
-	uint32 spriteInfoLength;
+	uint32 tilesDataLength;
 	uint32 tableLength;
 	uint32 paletteLength;
 	int8   info[4];
@@ -198,29 +224,30 @@ static void Sprites_LoadICNFile(const char *filename)
 	fileIndex = ChunkFile_Open(filename);
 
 	/* Get the length of the chunks */
-	spriteInfoLength = ChunkFile_Seek(fileIndex, HTOBE32('SSET'));
-	tableLength      = ChunkFile_Seek(fileIndex, HTOBE32('RTBL'));
-	paletteLength    = ChunkFile_Seek(fileIndex, HTOBE32('RPAL'));
+	tilesDataLength = ChunkFile_Seek(fileIndex, HTOBE32(CC_SSET));
+	tableLength     = ChunkFile_Seek(fileIndex, HTOBE32(CC_RTBL));
+	paletteLength   = ChunkFile_Seek(fileIndex, HTOBE32(CC_RPAL));
 
 	/* Read the header information */
-	ChunkFile_Read(fileIndex, HTOBE32('SINF'), info, 4);
-	GFX_Init_SpriteInfo(info[0], info[1]);
+	ChunkFile_Read(fileIndex, HTOBE32(CC_SINF), info, 4);
+	GFX_Init_TilesInfo(info[0], info[1]);
 
-	/* Get the SpriteInfo chunk */
-	free(g_spriteInfo);
-	g_spriteInfo = calloc(1, spriteInfoLength);
-	ChunkFile_Read(fileIndex, HTOBE32('SSET'), g_spriteInfo, spriteInfoLength);
-	Sprites_Decode(g_spriteInfo, g_spriteInfo);
+	/* Get the SpritePixels chunk */
+	free(g_tilesPixels);
+	g_tilesPixels = calloc(1, tilesDataLength);
+	ChunkFile_Read(fileIndex, HTOBE32(CC_SSET), g_tilesPixels, tilesDataLength);
+	tilesDataLength = Sprites_Decode(g_tilesPixels, g_tilesPixels);
+	/*g_tilesPixels = realloc(g_tilesPixels, tilesDataLength);*/
 
 	/* Get the Table chunk */
 	free(g_iconRTBL);
 	g_iconRTBL = calloc(1, tableLength);
-	ChunkFile_Read(fileIndex, HTOBE32('RTBL'), g_iconRTBL, tableLength);
+	ChunkFile_Read(fileIndex, HTOBE32(CC_RTBL), g_iconRTBL, tableLength);
 
 	/* Get the Palette chunk */
 	free(g_iconRPAL);
 	g_iconRPAL = calloc(1, paletteLength);
-	ChunkFile_Read(fileIndex, HTOBE32('RPAL'), g_iconRPAL, paletteLength);
+	ChunkFile_Read(fileIndex, HTOBE32(CC_RPAL), g_iconRPAL, paletteLength);
 
 	ChunkFile_Close(fileIndex);
 }
@@ -234,16 +261,16 @@ void Sprites_LoadTiles(void)
 
 	s_iconLoaded = true;
 
-	Sprites_LoadICNFile("ICON.ICN");
+	Tiles_LoadICNFile("ICON.ICN");
 
 	free(g_iconMap);
-	g_iconMap = File_ReadWholeFile("ICON.MAP");
+	g_iconMap = File_ReadWholeFileLE16("ICON.MAP");
 
-	g_veiledSpriteID    = g_iconMap[g_iconMap[ICM_ICONGROUP_FOG_OF_WAR] + 16];
-	g_bloomSpriteID     = g_iconMap[g_iconMap[ICM_ICONGROUP_SPICE_BLOOM]];
-	g_builtSlabSpriteID = g_iconMap[g_iconMap[ICM_ICONGROUP_CONCRETE_SLAB] + 2];
-	g_landscapeSpriteID = g_iconMap[g_iconMap[ICM_ICONGROUP_LANDSCAPE]];
-	g_wallSpriteID      = g_iconMap[g_iconMap[ICM_ICONGROUP_WALLS]];
+	g_veiledTileID    = g_iconMap[g_iconMap[ICM_ICONGROUP_FOG_OF_WAR] + 16];
+	g_bloomTileID     = g_iconMap[g_iconMap[ICM_ICONGROUP_SPICE_BLOOM]];
+	g_builtSlabTileID = g_iconMap[g_iconMap[ICM_ICONGROUP_CONCRETE_SLAB] + 2];
+	g_landscapeTileID = g_iconMap[g_iconMap[ICM_ICONGROUP_LANDSCAPE]];
+	g_wallTileID      = g_iconMap[g_iconMap[ICM_ICONGROUP_WALLS]];
 
 	Script_LoadFromFile("UNIT.EMC", g_scriptUnit, g_scriptFunctionsUnit, GFX_Screen_Get_ByIndex(SCREEN_2));
 }
@@ -268,21 +295,21 @@ static uint32 Sprites_LoadCPSFile(const char *filename, Screen screenID, uint8 *
 {
 	uint8 index;
 	uint16 size;
-	void *buffer;
+	uint8 *buffer;
 	uint8 *buffer2;
 	uint16 paletteSize;
 
 	buffer = GFX_Screen_Get_ByIndex(screenID);
 
-	index = File_Open(filename, 1);
+	index = File_Open(filename, FILE_MODE_READ);
 
-	File_Read(index, &size, 2);
+	size = File_Read_LE16(index);
 
 	File_Read(index, buffer, 8);
 
 	size -= 8;
 
-	paletteSize = ((uint16 *)buffer)[3];
+	paletteSize = READ_LE_UINT16(buffer + 6);
 
 	if (palette != NULL && paletteSize != 0) {
 		File_Read(index, palette, paletteSize);
@@ -290,7 +317,8 @@ static uint32 Sprites_LoadCPSFile(const char *filename, Screen screenID, uint8 *
 		File_Seek(index, paletteSize, 1);
 	}
 
-	((uint16 *)buffer)[3] = 0;
+	buffer[6] = 0;	/* dont read palette next time */
+	buffer[7] = 0;
 	size -= paletteSize;
 
 	buffer2 = GFX_Screen_Get_ByIndex(screenID);
@@ -315,23 +343,24 @@ static uint32 Sprites_LoadCPSFile(const char *filename, Screen screenID, uint8 *
  */
 uint16 Sprites_LoadImage(const char *filename, Screen screenID, uint8 *palette)
 {
+#if 0
 	uint8 index;
 	uint32 header;
 
-	index = File_Open(filename, 1);
-	if (index == 0xFF) return 0;
+	index = File_Open(filename, FILE_MODE_READ);
+	if (index == FILE_INVALID) return 0;
 
 	File_Read(index, &header, 4);
 	File_Close(index);
-
+#endif
 	return Sprites_LoadCPSFile(filename, screenID, palette) / 8000;
 }
 
-void Sprites_SetMouseSprite(uint16 hotSpotX, uint16 hotSpotY, uint8 *sprite)
+void Sprites_SetMouseSprite(uint16 hotSpotX, uint16 hotSpotY, const uint8 *sprite)
 {
 	uint16 size;
 
-	if (sprite == NULL || g_var_7097 != 0) return;
+	if (sprite == NULL || g_mouseDisabled != 0) return;
 
 	while (g_mouseLock != 0) sleepIdle();
 
@@ -339,29 +368,29 @@ void Sprites_SetMouseSprite(uint16 hotSpotX, uint16 hotSpotY, uint8 *sprite)
 
 	GUI_Mouse_Hide();
 
-	size = GFX_GetSize(*(uint16 *)(sprite + 3) + 16, sprite[5]);
+	size = GFX_GetSize(READ_LE_UINT16(sprite + 3) + 16, sprite[5]);
 
 	if (s_mouseSpriteBufferSize < size) {
 		g_mouseSpriteBuffer = realloc(g_mouseSpriteBuffer, size);
 		s_mouseSpriteBufferSize = size;
 	}
 
-	size = *(uint16 *)(sprite + 8) + 10;
-	if ((*(uint16 *)sprite & 0x1) != 0) size += 16;
+	size = READ_LE_UINT16(sprite + 8) + 10;
+	if ((*sprite & 0x1) != 0) size += 16;
 
 	if (s_mouseSpriteSize < size) {
 		g_mouseSprite = realloc(g_mouseSprite, size);
 		s_mouseSpriteSize = size;
 	}
 
-	if ((*(uint16 *)sprite & 0x2) != 0) {
-		memcpy(g_mouseSprite, sprite, *(uint16 *)(sprite + 6) * 2);
+	if ((*sprite & 0x2) != 0) {
+		memcpy(g_mouseSprite, sprite, READ_LE_UINT16(sprite + 6));
 	} else {
 		uint8 *dst = (uint8 *)g_mouseSprite;
-		uint8 *buf = g_spriteBuffer;
-		uint16 flags = *(uint16 *)sprite | 0x2;
+		uint8 flags = sprite[0] | 0x2;
 
-		*(uint16 *)dst = flags;
+		dst[0] = flags;
+		dst[1] = sprite[1];
 		dst += 2;
 		sprite += 2;
 
@@ -369,8 +398,9 @@ void Sprites_SetMouseSprite(uint16 hotSpotX, uint16 hotSpotY, uint8 *sprite)
 		dst += 6;
 		sprite += 6;
 
-		size = *(uint16 *)sprite;
-		*(uint16 *)dst = size;
+		size = READ_LE_UINT16(sprite);
+		dst[0] = sprite[0];
+		dst[1] = sprite[1];
 		dst += 2;
 		sprite += 2;
 
@@ -380,9 +410,7 @@ void Sprites_SetMouseSprite(uint16 hotSpotX, uint16 hotSpotY, uint8 *sprite)
 			sprite += 16;
 		}
 
-		Format80_Decode(buf, sprite, size);
-
-		memcpy(dst, buf, size);
+		Format80_Decode(dst, sprite, size);
 	}
 
 	g_mouseSpriteHotspotX = hotSpotX;
@@ -390,7 +418,7 @@ void Sprites_SetMouseSprite(uint16 hotSpotX, uint16 hotSpotY, uint8 *sprite)
 
 	sprite = g_mouseSprite;
 	g_mouseHeight = sprite[5];
-	g_mouseWidth = (*(uint16 *)(sprite + 3) >> 3) + 2;
+	g_mouseWidth = (READ_LE_UINT16(sprite + 3) >> 3) + 2;
 
 	GUI_Mouse_Show();
 
@@ -437,17 +465,16 @@ void Sprites_CPS_LoadRegionClick(void)
  * @param spriteID The sprite to check for.
  * @return True if and only if the spriteID is part of the veiling sprites.
  */
-bool Sprite_IsUnveiled(uint16 spriteID)
+bool Tile_IsUnveiled(uint16 tileID)
 {
-	if (spriteID > g_veiledSpriteID) return true;
-	if (spriteID < g_veiledSpriteID - 15) return true;
+	if (tileID > g_veiledTileID) return true;
+	if (tileID < g_veiledTileID - 15) return true;
 
 	return false;
 }
 
 void Sprites_Init(void)
 {
-	g_spriteBuffer = calloc(1, 20000);
 	Sprites_Load("MOUSE.SHP");                       /*   0 -   6 */
 	Sprites_Load(String_GenerateFilename("BTTN"));   /*   7 -  11 */
 	Sprites_Load("SHAPES.SHP");                      /*  12 - 110 */
@@ -484,12 +511,10 @@ void Sprites_Uninit(void)
 	for (i = 0; i < s_spritesCount; i++) free(g_sprites[i]);
 	free(g_sprites); g_sprites = NULL;
 
-	free(g_spriteBuffer); g_spriteBuffer = NULL;
-
 	free(g_mouseSpriteBuffer); g_mouseSpriteBuffer = NULL;
 	free(g_mouseSprite); g_mouseSprite = NULL;
 
-	free(g_spriteInfo); g_spriteInfo = NULL;
+	free(g_tilesPixels); g_tilesPixels = NULL;
 	free(g_iconRTBL); g_iconRTBL = NULL;
 	free(g_iconRPAL); g_iconRPAL = NULL;
 

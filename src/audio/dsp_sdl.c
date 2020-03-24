@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <SDL.h>
 #include "types.h"
+#include "../os/endian.h"
 
 #include "dsp.h"
 
@@ -19,7 +20,12 @@ static void DSP_Callback(void *userdata, Uint8 *stream, int len)
 {
 	VARIABLE_NOT_USED(userdata);
 
-	if (s_status == 0 || s_bufferLen == 0 || s_buffer == NULL) return;
+	if (s_status == 0 || s_bufferLen == 0 || s_buffer == NULL) {
+		/* no more sample to play : */
+		memset(stream, 0x80, len);	/* fill buffer with silence */
+		SDL_PauseAudio(1);	/* stop playback */
+		return;
+	}
 
 	if (len <= (int)s_bufferLen) {
 		memcpy(stream, s_buffer, len);
@@ -27,7 +33,9 @@ static void DSP_Callback(void *userdata, Uint8 *stream, int len)
 		s_buffer += len;
 	} else {
 		memcpy(stream, s_buffer, s_bufferLen);
+		memset(stream + s_bufferLen, 0x80, len - s_bufferLen);	/* fill buffer end with silence */
 		s_bufferLen = 0;
+		s_buffer = NULL;
 		s_status = 0;
 	}
 }
@@ -122,11 +130,11 @@ void DSP_Play(const uint8 *data)
 {
 	DSP_Stop();
 
-	data += ((uint16 *)data)[10];
+	data += READ_LE_UINT16(data + 20);
 
 	if (*data != 1) return;
 
-	s_bufferLen = (*(uint32 *)data >> 8) - 2;
+	s_bufferLen = (READ_LE_UINT32(data) >> 8) - 2;
 
 	if (s_dataLen < s_bufferLen) {
 		s_data = realloc(s_data, s_bufferLen);

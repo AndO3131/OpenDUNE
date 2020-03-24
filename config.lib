@@ -16,6 +16,7 @@ set_default() {
 	host=""
 	cc_build=""
 	cc_host=""
+	as_host=""
 	strip=""
 	lipo=""
 	awk="awk"
@@ -24,7 +25,9 @@ set_default() {
 	config_log="config.log"
 	prefix_dir="/usr/local"
 	binary_dir="games"
+	doc_dir="share/doc/opendune"
 	data_dir="share/games/opendune"
+	icon_dir="share/icons/hicolor/32x32/apps"
 	install_dir="/"
 	binary_name="opendune"
 	enable_debug="0"
@@ -36,7 +39,13 @@ set_default() {
 	enable_universal="0"
 	with_osx_sysroot="1"
 	with_sdl="1"
+	with_sdlimage="1"
+	with_sdl2="1"
+	with_sdl2image="1"
 	with_asound="1"
+	with_oss="1"
+	with_pulse="1"
+	with_munt="1"
 	enable_builtin_depend="1"
 	with_makedepend="0"
 	with_sort="1"
@@ -57,6 +66,7 @@ set_default() {
 		prefix_dir
 		binary_dir
 		data_dir
+		icon_dir
 		install_dir
 		binary_name
 		enable_debug
@@ -68,7 +78,13 @@ set_default() {
 		enable_universal
 		with_osx_sysroot
 		with_sdl
+		with_sdlimage
+		with_sdl2
+		with_sdl2image
 		with_asound
+		with_oss
+		with_pulse
+		with_munt
 		enable_builtin_depend
 		with_makedepend
 		with_sort
@@ -129,6 +145,9 @@ detect_params() {
 			--data-dir)                   prev_p="data_dir";;
 			--data-dir=*)                 data_dir="$optarg";;
 
+			--icon-dir)                   prev_p="icon_dir";;
+			--icon-dir=*)                 icon_dir="$optarg";;
+
 			--binary-name)                prev_p="binary_name";;
 			--binary-name=*)              binary_name="$optarg";;
 
@@ -162,12 +181,27 @@ detect_params() {
 			--without-sdl)                with_sdl="0";;
 			--with-sdl=*)                 with_sdl="$optarg";;
 
+			--with-sdl2)                  with_sdl2="2";;
+			--without-sdl2)               with_sdl2="0";;
+			--with-sdl2=*)                with_sdl2="$optarg";;
+
 			--with-asound)                with_asound="2";;
 			--without-asound)             with_asound="0";;
 			--with-asound=*)              with_asound="$optarg";;
 			--with-alsa)                  with_asound="2";;
 			--without-alsa)               with_asound="0";;
 			--with-alsa=*)                with_asound="$optarg";;
+
+			--with-oss)                   with_oss="2";;
+			--without-oss)                with_oss="0";;
+
+			--with-pulse)                 with_pulse="2";;
+			--without-pulse)              with_pulse="0";;
+			--with-pulse=*)               with_pulse="$optarg";;
+
+			--with-munt)                  with_munt="2";;
+			--without-munt)               with_munt="0";;
+			--with-munt=*)                with_munt="$optarg";;
 
 			--disable-builtin-depend)     enable_builtin_depend="0";;
 			--enable-builtin-depend)      enable_builtin_depend="2";;
@@ -251,10 +285,10 @@ check_params() {
 
 	# Check if all params have valid values
 
-	# OS only allows DETECT, UNIX, OSX, FREEBSD, OPENBSD, MORPHOS, BEOS, HAIKU, SUNOS, CYGWIN, MINGW, OS2, DOS, and WINCE
-	if [ -z "`echo $os | egrep '^(DETECT|UNIX|OSX|FREEBSD|OPENBSD|NETBSD|HPUX|MORPHOS|BEOS|HAIKU|SUNOS|CYGWIN|MINGW|OS2|DOS|WINCE)$'`" ]; then
+	# OS only allows DETECT, UNIX, OSX, FREEBSD, OPENBSD, MORPHOS, BEOS, HAIKU, SUNOS, CYGWIN, MINGW, OS2, DOS, and WINCE, TOS
+	if [ -z "`echo $os | egrep '^(DETECT|UNIX|OSX|FREEBSD|OPENBSD|NETBSD|HPUX|MORPHOS|BEOS|HAIKU|SUNOS|CYGWIN|MINGW|OS2|DOS|WINCE|TOS)$'`" ]; then
 		log 1 "configure: error: invalid option --os=$os"
-		log 1 " Available options are: --os=[DETECT|UNIX|OSX|FREEBSD|OPENBSD|NETBSD|HPUX|MORPHOS|BEOS|HAIKU|SUNOS|CYGWIN|MINGW|OS2|DOS|WINCE]"
+		log 1 " Available options are: --os=[DETECT|UNIX|OSX|FREEBSD|OPENBSD|NETBSD|HPUX|MORPHOS|BEOS|HAIKU|SUNOS|CYGWIN|MINGW|OS2|DOS|WINCE|TOS]"
 		exit 1
 	fi
 	# cpu_type can be either 32 or 64
@@ -333,6 +367,10 @@ check_params() {
 	# Show what we configured
 	if [ "$enable_debug" = "0" ]; then
 		log 1 "using debug level... no"
+		if [ $enable_assert -eq 1 ]; then
+			enable_assert=0
+			log 1 "disabling asserts"
+		fi
 	elif [ "$enable_profiling" != "0" ]; then
 		log 1 "using debug level... profiling (debug level $enable_debug)"
 	else
@@ -341,14 +379,13 @@ check_params() {
 
 	if [ "$enable_lto" != "0" ]; then
 		# GCC 4.5 outputs '%{flto}', GCC 4.6 outputs '%{flto*}'
-		has_lto=`($cxx_build -dumpspecs 2>&1 | grep '\%{flto') || ($cxx_build -help ipo 2>&1 | grep '\-ipo')`
+		has_lto=`($cc_build -dumpspecs 2>&1 | grep '\%{flto') || ($cc_build -help ipo 2>&1 | grep '\-ipo')`
 		if [ -n "$has_lto" ]; then
 			log 1 "using link time optimization... yes"
 		else
 			enable_lto="0"
 			log 1 "using link time optimization... no"
 			log 1 "WARNING: you selected link time optimization but it is not found."
-			sleep 5
 		fi
 	else
 		log 1 "using link time optimization... no"
@@ -404,8 +441,24 @@ check_params() {
 		fi
 	fi
 
+	if [ "$os" = "TOS" ]; then
+		with_sdl2="0"
+		with_sdl="0"
+		with_asound="0"
+		with_oss="0"
+		with_pulse="0"
+		with_munt="0"
+	fi
+	if [ "$os" = "FREEBSD" ] && [ "$with_oss" != "0" ] && [ "$with_asound" = "1" ] ; then
+		# prefers OSS to ALSA under FreeBSD
+		with_asound="0"
+	fi
+	detect_sdl2
 	detect_sdl
 	detect_asound
+	detect_oss
+	detect_pulseaudio
+	detect_munt
 
 	if [ "$os" = "MINGW" ] || [ "$os" = "CYGWIN" ] || [ "$os" = "WINCE" ]; then
 		log 1 "checking GDI video driver... found"
@@ -500,6 +553,12 @@ check_params() {
 		fi
 
 		log 1 "checking ccache... $ccache"
+	fi
+
+	if [ "$os" = "OSX" ] ; then
+		OSXAPP="OpenDUNE.app"
+	else
+		OSXAPP=""
 	fi
 
 	if [ -d "$ROOT_DIR/.svn" ] && [ -n "`svn help 2>/dev/null`" ]; then
@@ -634,14 +693,8 @@ make_compiler_cflags() {
 		# -Weverything enables too many useless warnings that can't be disabled (as of 3.0)
 		flags="$flags -Wall -W"
 
-		# warning: unused parameter '...'
-		flags="$flags -Wno-unused-parameter"
-
 		# warning: expression result unused
 		flags="$flags -Wno-unused-value"
-
-		# warning: multi-character character constant
-		flags="$flags -Wno-multichar"
 
 		# warning: explicitly assigning a variable of type '...' to itself
 		# it happens when using the FOR_ALL_WINDOWS_FROM_BACK_FROM macro
@@ -678,17 +731,28 @@ make_compiler_cflags() {
 	else
 		# Enable some things only for certain GCC versions
 		cc_version=`$1 -dumpversion | cut -c 1,3`
+		if [ $(echo -n "$cc_version" | wc -c) -eq 1 ] ; then
+			# add a 0 if the version had only one digit
+			cc_version="${cc_version}0"
+		fi
 
 		if [ $cc_version -lt 33 ]; then
 			log 1 "configure: error: gcc older than 3.3 can't compile OpenDUNE because of its poor template support"
 			exit 1
 		fi
 
-		flags="$flags -ansi -pedantic"
-		flags="$flags -Wall -Wno-multichar -Wsign-compare -Wundef"
+		if [ "$os" != "TOS" ] && [ "$os" != "DOS" ] && [ $cc_version -lt 70 ] ; then
+			if [ "$with_asound" = "0" ] ; then
+				flags="$flags -ansi"
+			fi
+			flags="$flags -pedantic"
+		fi
+		flags="$flags -fno-common"
+		flags="$flags -Wall -Wsign-compare -Wundef"
 		flags="$flags -Wwrite-strings -Wpointer-arith"
-		flags="$flags -W -Wno-unused-parameter -Wredundant-decls"
+		flags="$flags -W -Wredundant-decls"
 		flags="$flags -Wformat=2 -Wformat-security"
+		flags="$flags -Wno-format-nonliteral"
 
 		if [ $enable_assert -eq 0 ]; then
 			# Do not warn about unused variables when building without asserts
@@ -793,7 +857,11 @@ make_cflags_and_ldflags() {
 			LDFLAGS="$LDFLAGS -noixemul"
 		fi
 
-		CFLAGS="-O2 -fomit-frame-pointer $CFLAGS"
+		if [ "$os" = "TOS" ] ; then
+			CFLAGS="-Ofast -fomit-frame-pointer $CFLAGS"
+		else
+			CFLAGS="-O2 -fomit-frame-pointer -Wno-variadic-macros $CFLAGS"
+		fi
 	else
 		OBJS_SUBDIR="debug"
 
@@ -816,7 +884,12 @@ make_cflags_and_ldflags() {
 			# Define only when compiling with GCC. Some GLIBC versions use GNU
 			# extensions in a way that breaks build with at least ICC.
 			# This requires -O1 or more, so debug level 3 (-O0) is excluded.
-			CFLAGS="$CFLAGS -D_FORTIFY_SOURCE=2"
+			osversion=`uname -r | cut -f 1 -d'.'`
+			if [ "$os" != "OSX" ] || [ "$os" = "OSX" -a "$osversion" -ne 9 ] ; then
+				# FORTIFY_SOURCE causes problem with OS X 10.5 / Xcode 3.1.4
+				# OS X 10.5.xx is Darwin 9.xx
+				CFLAGS="$CFLAGS -D_FORTIFY_SOURCE=2"
+			fi
 
 			# Just add -O1 to the tools needed for building.
 			CFLAGS_BUILD="$CFLAGS_BUILD -D_FORTIFY_SOURCE=2 -O1"
@@ -840,8 +913,12 @@ make_cflags_and_ldflags() {
 			LDFLAGS="$LDFLAGS -mwin32"
 		fi
 		if [ "$os" = "MINGW" ] || [ "$os" = "CYGWIN" ]; then
-			flags="$flags -mno-cygwin"
-			LDFLAGS="$LDFLAGS -mno-cygwin -Wl,--subsystem,windows"
+			if [ $cc_version -lt 46 ]; then
+				flags="$flags -mno-cygwin"
+				LDFLAGS="$LDFLAGS -mno-cygwin"
+			fi
+
+			LDFLAGS="$LDFLAGS -Wl,--subsystem,windows"
 
 			LIBS="$LIBS -lwinmm -lcomctl32 -lgdi32"
 
@@ -867,6 +944,16 @@ make_cflags_and_ldflags() {
 		# Add macports include dir which is not always set a default system dir. This avoids zillions of bogus warnings.
 		CFLAGS="$CFLAGS -isystem/opt/local/include"
 
+		# Add OS X SDK audio frameworks
+		LDFLAGS="-Wl,-framework,AudioToolbox -Wl,-framework,AudioUnit $LDFLAGS"
+		LDFLAGS="-Wl,-framework,CoreFoundation $LDFLAGS"
+
+		if [ -z "$sdl2_config" ] && [ -z "$sdl_config" ] ; then
+			LDFLAGS="$LDFLAGS -Wl,-framework,ApplicationServices"
+			LDFLAGS="$LDFLAGS -Wl,-framework,Carbon"
+			LDFLAGS="$LDFLAGS -Wl,-framework,CoreAudio"
+		fi
+
 		if [ "$enable_universal" = "0" ]; then
 			# Universal builds set this elsewhere
 			CFLAGS="$OSX_SYSROOT $CFLAGS"
@@ -877,7 +964,11 @@ make_cflags_and_ldflags() {
 			# Only set the min version when not doing an universal build.
 			# Universal builds set the version elsewhere.
 			if [ "$cpu_type" = "64" ]; then
-				CFLAGS="$CFLAGS -mmacosx-version-min=10.5"
+				if [ -n "$sdl2_config" ]; then
+					CFLAGS="$CFLAGS -mmacosx-version-min=10.6"
+				else
+					CFLAGS="$CFLAGS -mmacosx-version-min=10.5"
+				fi
 			else
 				gcc_cpu=`$cc_host -dumpmachine`
 				if [ "`echo $gcc_cpu | cut -c 1-3`" = "ppc" -o "`echo $gcc_cpu | cut -c 1-7`" = "powerpc" ]; then
@@ -887,6 +978,11 @@ make_cflags_and_ldflags() {
 					# Intel is only available starting from 10.4
 					CFLAGS="$CFLAGS -mmacosx-version-min=10.4"
 				fi
+				machine=$(machine)
+				case $machine in
+					ppc7400 | ppc7450 | ppc970)
+					CFLAGS="$CFLAGS -maltivec" ;;
+				esac
 			fi
 		fi
 	fi
@@ -902,6 +998,14 @@ make_cflags_and_ldflags() {
 	# And others like Windows
 	if [ "$os" = "MINGW" ] || [ "$os" = "CYGWIN" ] || [ "$os" = "WINCE" ]; then
 		CFLAGS="$CFLAGS -DWIN"
+		LIBS="$LIBS -lshlwapi"
+	fi
+
+	if [ "$os" = "TOS" ]; then
+		CFLAGS="-m68030 -msoft-float $CFLAGS"
+		LDFLAGS="$LDFLAGS -Wl,--traditional-format"
+		as_host="vasmm68k_mot"
+		asflags="-m68030 -Faout -quiet"
 	fi
 
 	if [ -n "$sdl_config" ]; then
@@ -909,9 +1013,56 @@ make_cflags_and_ldflags() {
 		# SDL must not add _GNU_SOURCE as it breaks many platforms
 		CFLAGS="$CFLAGS `$sdl_config --cflags | sed 's@-D_GNU_SOURCE[^ ]*@@'`"
 		if [ "$enable_static" != "0" ]; then
-			LIBS="$LIBS `$sdl_config --static-libs`"
+			if [ "$os" = "OSX" ] ; then
+				libpath=`$sdl_config --static-libs | cut -d ' ' -f 1 | cut -c 3- `
+				LIBS="$LIBS `$sdl_config --static-libs | sed 's@ -l\([^ ]*\)@ '${libpath}'/lib\1.a@g' `"
+			else
+				LIBS="$LIBS `$sdl_config --static-libs`"
+			fi
+			if [ $with_sdlimage -gt 0 ]; then
+				if [ "$os" = "OSX" ] ; then
+					LIBS="$LIBS $(pkg-config SDL_image --libs-only-L | cut -c 3- | tr -d ' ')/libSDL_image.a"
+				else
+					LIBS="$LIBS -lSDL_image"
+				fi
+			fi
 		else
 			LIBS="$LIBS `$sdl_config --libs`"
+			if [ $with_sdlimage -gt 0 ]; then
+				LIBS="$LIBS -lSDL_image"
+			fi
+		fi
+		if [ $with_sdlimage -eq 0 ]; then
+			CFLAGS="$CFLAGS -DWITHOUT_SDLIMAGE"
+		fi
+	fi
+
+	if [ -n "$sdl2_config" ]; then
+		CFLAGS="$CFLAGS -DWITH_SDL2"
+		# SDL2 must not add _GNU_SOURCE as it breaks many platforms
+		CFLAGS="$CFLAGS `$sdl2_config --cflags | sed 's@-D_GNU_SOURCE[^ ]*@@'` -DSDL_FORCE_INLINE='static __inline'"
+		if [ "$enable_static" != "0" ]; then
+			if [ "$os" = "OSX" ] ; then
+				libpath=`$sdl2_config --static-libs | cut -d ' ' -f 1 | cut -b 3- `
+				LIBS="$LIBS `$sdl2_config --static-libs | cut -d ' ' -f 2- | sed 's@-l\([^ ]*\)@'${libpath}'/lib\1.a@' `"
+			else
+				LIBS="$LIBS `$sdl2_config --static-libs`"
+			fi
+			if [ $with_sdl2image -gt 0 ]; then
+				if [ "$os" = "OSX" ] ; then
+					LIBS="$LIBS $(pkg-config SDL2_image --libs-only-L | cut -c 3- | tr -d ' ')/libSDL2_image.a"
+				else
+					LIBS="$LIBS -lSDL2_image"
+				fi
+			fi
+		else
+			LIBS="$LIBS `$sdl2_config --libs`"
+			if [ $with_sdl2image -gt 0 ]; then
+				LIBS="$LIBS -lSDL2_image"
+			fi
+		fi
+		if [ $with_sdl2image -eq 0 ]; then
+			CFLAGS="$CFLAGS -DWITHOUT_SDLIMAGE"
 		fi
 	fi
 
@@ -929,6 +1080,22 @@ make_cflags_and_ldflags() {
 			LIBS="$LIBS -lasound"
 		fi
 		CFLAGS="$CFLAGS -DALSA"
+                if [ "$os" = "FREEBSD" ]; then
+                        CFLAGS="$CFLAGS -Dinline=__inline__"
+                fi
+	fi
+
+	if [ "$with_pulse" != "0" ]; then
+		LIBS="$LIBS $(pkg-config --libs-only-l libpulse)"
+		CFLAGS="$CFLAGS $(pkg-config --cflags libpulse) -DPULSEAUDIO"
+		if [ "$os" = "FREEBSD" ] || [ "$os" = "OPENBSD" ] || [ "$os" = "NETBSD" ]; then
+			LIBS="$LIBS -lintl"
+		fi
+	fi
+
+	if [ "$with_munt" != "0" ]; then
+		LIBS="$LIBS -lmt32emu -lm -lstdc++"
+		CFLAGS="$CFLAGS -DMUNT"
 	fi
 
 	if [ "$enable_assert" = "0" ]; then
@@ -1097,24 +1264,24 @@ check_compiler() {
 }
 
 check_build() {
-	if [ "$os" = "FREEBSD" ]; then
-		# FreeBSD's C compiler does not support dump machine.
-		check_compiler "build system type" "cc_build" "$build" "$cc_build" "$CXX" "g++" "c++" "0" "-dumpmachine"
-	else
+           #	if [ "$os" = "FREEBSD" ]; then
+           #	# FreeBSD's C compiler does not support dump machine.
+           #	check_compiler "build system type" "cc_build" "$build" "$cc_build" "$CXX" "g++" "c++" "0" "-dumpmachine"
+           #else
 		check_compiler "build system type" "cc_build" "$build" "$cc_build" "$CC" "gcc" "cc" "0" "-dumpmachine"
-	fi
+                #fi
 }
 
 check_host() {
 	# By default the host is the build
 	if [ -z "$host" ]; then host="$build"; fi
 
-	if [ "$os" = "FREEBSD" ]; then
-		# FreeBSD's C compiler does not support dump machine.
-		check_compiler "host system type" "cc_host" "$host" "$cc_host" "$CXX" "g++" "c++" "0" "-dumpmachine"
-	else
+           #	if [ "$os" = "FREEBSD" ]; then
+           #		# FreeBSD's C compiler does not support dump machine.
+           #		check_compiler "host system type" "cc_host" "$host" "$cc_host" "$CXX" "g++" "c++" "0" "-dumpmachine"
+           #	else
 		check_compiler "host system type" "cc_host" "$host" "$cc_host" "$CC" "gcc" "cc" "0" "-dumpmachine"
-	fi
+                #	fi
 }
 
 check_strip() {
@@ -1380,7 +1547,65 @@ detect_sdl() {
 		return 0
 	fi
 
-	log 1 "checking SDL... found"
+	log 1 "checking SDL... found version $version"
+
+	if version=`pkg-config SDL_image --modversion 2>/dev/null`; then
+		log 1 "checking SDL_image... found version $version"
+		with_sdlimage="1"
+	else
+		log 1 "checking SDL_image... not found"
+		with_sdlimage="0"
+	fi
+}
+
+detect_sdl2() {
+	# 0 means no, 1 is auto-detect, 2 is force
+	if [ "$with_sdl2" = "0" ]; then
+		log 1 "checking SDL2... disabled"
+
+		sdl2_config=""
+		return 0
+	fi
+
+	if [ "$with_sdl2" = "1" ] || [ "$with_sdl2" = "" ] || [ "$with_sdl2" = "2" ]; then
+		sdl2_config="sdl2-config"
+	else
+		sdl2_config="$with_sdl2"
+	fi
+
+	version=`$sdl2_config --version 2>/dev/null`
+	ret=$?
+	log 2 "executing $sdl2_config --version"
+	log 2 "  returned $version"
+	log 2 "  exit code $ret"
+
+	if [ -z "$version" ] || [ "$ret" != "0" ]; then
+		log 1 "checking SDL2... not found"
+
+		# It was forced, so it should be found.
+		if [ "$with_sdl2" != "1" ]; then
+			log 1 "configure: error: sdl2-config couldn't be found"
+			log 1 "configure: error: you supplied '$with_sdl2', but it seems invalid"
+			exit 1
+		fi
+
+		sdl2_config=""
+		return 0
+	fi
+
+	log 1 "checking SDL2... found version $version"
+	# SDL2 found, disabling SDL
+	if [ "$with_sdl" = "1" ] ; then
+		with_sdl="0"
+	fi
+
+	if version=`pkg-config SDL2_image --modversion 2>/dev/null`; then
+		log 1 "checking SDL2_image... found version $version"
+		with_sdl2image="1"
+	else
+		log 1 "checking SDL2_image... not found"
+		with_sdl2image="0"
+	fi
 }
 
 detect_osx_sdk() {
@@ -1540,6 +1765,18 @@ detect_asound() {
 	detect_library "$with_asound" "asound" "libasound.a" "alsa/" "asoundlib.h"
 }
 
+detect_oss() {
+	detect_library "$with_oss" "oss" "" "sys/" "soundcard.h"
+}
+
+detect_pulseaudio() {
+	detect_library "$with_pulse" "pulse" "libpulse.a" "pulse/" "pulseaudio.h"
+}
+
+detect_munt() {
+	detect_library "$with_munt" "munt" "libmt32emu.a" "mt32emu/" "mt32emu.h"
+}
+
 _detect_sort() {
 	sort_test_in="d
 a
@@ -1634,10 +1871,12 @@ make_sed() {
 	SRC_REPLACE="
 		s@!!CC_HOST!!@$cc_host@g;
 		s@!!CC_BUILD!!@$cc_build@g;
+		s@!!AS_HOST!!@$as_host@g;
 		s@!!STRIP!!@$strip $strip_arg@g;
 		s@!!LIPO!!@$lipo@g;
 		s@!!CFLAGS!!@$T_CFLAGS@g;
 		s@!!CFLAGS_BUILD!!@$CFLAGS_BUILD@g;
+		s@!!ASFLAGS!!@$asflags@g;
 		s@!!LIBS!!@$LIBS@g;
 		s@!!LDFLAGS!!@$T_LDFLAGS@g;
 		s@!!LDFLAGS_BUILD!!@$LDFLAGS_BUILD@g;
@@ -1649,7 +1888,9 @@ make_sed() {
 		s@!!OSXAPP!!@$OSXAPP@g;
 		s@!!OPENDUNE!!@$OPENDUNE@g;
 		s@!!BINARY_DIR!!@$prefix_dir/$binary_dir@g;
+		s@!!DOC_DIR!!@$prefix_dir/$doc_dir@g;
 		s@!!DATA_DIR!!@$prefix_dir/$data_dir@g;
+		s@!!ICON_DIR!!@$prefix_dir/$icon_dir@g;
 		s@!!INSTALL_DIR!!@$install_dir@g;
 		s@!!BINARY_NAME!!@$binary_name@g;
 		s@!!DEPEND!!@$DEPEND@g;
@@ -1664,6 +1905,7 @@ make_sed() {
 		s@!!CONFIG_CACHE_SOURCE_LIST!!@config.cache.source.list@g;
 		s@!!CONFIG_CACHE_PWD!!@config.cache.pwd@g;
 		s@!!OBJS_C!!@$OBJS_C@g;
+		s@!!OBJS_S!!@$OBJS_S@g;
 		s@!!SRCS!!@$SRCS@g;
 		s@!!OS!!@$os@g;
 		s@!!CONFIGURE_FILES!!@$CONFIGURE_FILES@g;
@@ -1828,6 +2070,8 @@ showhelp() {
 	echo "  --data-dir=dir                 location of data files (.PAK files)."
 	echo "                                 Will be prefixed with the prefix-dir"
 	echo "                                 [share/games/opendune]"
+	echo "  --icon-dir=dir                 location of icon files."
+	echo "                                 Will be prefixed with the prefix-dir"
 	echo "  --install-dir=dir              specifies the root to install to."
 	echo "                                 Useful to install into jails [/]"
 	echo "  --binary-name                  the name used for the binary, icons,"
@@ -1849,7 +2093,11 @@ showhelp() {
 	echo "                                 (OSX ONLY)"
 	echo "  --with-sort=sort               define a non-default location for sort"
 	echo "  --with-sdl[=sdl-config]        enables SDL video driver support"
+	echo "  --with-sdl2[=sdl2-config]      enables SDL2 video driver support"
 	echo "  --with-asound[=libasound.a]    enables ALSA support"
+	echo "  --with-oss                     enables Open Sound System"
+	echo "  --with-munt                    enables MUNT support"
+	echo "  --with-pulse[=libpulse.a]      enables PulseAudio support"
 	echo "  --disable-builtin-depend       disable use of builtin deps finder"
 	echo "  --with-makedepend[=makedepend] enables makedepend support"
 	echo "  --with-ccache                  enables ccache support"

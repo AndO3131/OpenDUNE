@@ -8,7 +8,8 @@
 
 extern bool GUI_Widget_Mentat_Click(Widget *w);
 
-WidgetInfo g_table_gameWidgetInfo[] = {
+/* TODO : const */
+WidgetInfo g_table_gameWidgetInfo[19] = {
 	{ /* 0 */
 		/* index       */ 1,
 		/* clickProc   */ &GUI_Widget_Mentat_Click,
@@ -239,7 +240,7 @@ WidgetInfo g_table_gameWidgetInfo[] = {
 	}
 };
 
-WidgetInfo g_table_factoryWidgetInfo[] = {
+WidgetInfo g_table_factoryWidgetInfo[13] = {
 	{ /* 0 */
 		/* index       */ -1,
 		/* clickProc   */ &GUI_Production_List_Click,

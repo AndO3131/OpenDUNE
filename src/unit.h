@@ -115,6 +115,18 @@ typedef enum MovementType {
 } MovementType;
 
 /**
+ * Types of DisplayModes available in the game.
+ */
+typedef enum DisplayMode {
+	DISPLAYMODE_SINGLE_FRAME        = 0,
+	DISPLAYMODE_UNIT                = 1,                    /* Ground: N,NE,E,SE,S.  Air: N,NE,E. */
+	DISPLAYMODE_ROCKET              = 2,                    /* N,NNE,NE,ENE,E. */
+	DISPLAYMODE_INFANTRY_3_FRAMES   = 3,                    /* N,E,S; 3 frames per direction. */
+	DISPLAYMODE_INFANTRY_4_FRAMES   = 4,                    /* N,E,S; 4 frames per direction. */
+	DISPLAYMODE_ORNITHOPTER         = 5                     /* N,NE,E; 3 frames per direction. */
+} DisplayMode;
+
+/**
  * Directional information
  */
 typedef struct dir24 {
@@ -140,13 +152,14 @@ typedef struct Unit {
 	                                                         * - Sandworm : units to eat before disappearing.
 	                                                         * - Harvester : harvested spice.
 	                                                         */
-	uint8  deviated;                                        /*!< ?? If non-zero, the unit is deviated, but what does it hold exactly? */
+	uint8  deviated;                                        /*!< Strength of deviation. Zero if unit is not deviated. */
+	uint8  deviatedHouse;                                   /*!< Which house it is deviated to. Only valid if 'deviated' is non-zero. */
 	tile32 targetLast;                                      /*!< The last position of the Unit. Carry-alls will return the Unit here. */
 	tile32 targetPreLast;                                   /*!< The position before the last position of the Unit. */
 	dir24  orientation[2];                                  /*!< Orientation of the unit. [0] = base, [1] = top (turret, etc). */
-	uint8  speedSub;                                        /*!< The amount to move (modulo 16). */
-	uint8  speedRemainder;                                  /*!< Remainder of speedSub (till it tips over 16). */
-	uint8  speed;                                           /*!< The amount to move (divided by 16). */
+	uint8  speedPerTick;                                    /*!< Every tick this amount is added; if over 255 Unit is moved. */
+	uint8  speedRemainder;                                  /*!< Remainder of speedPerTick. */
+	uint8  speed;                                           /*!< The amount to move when speedPerTick goes over 255. */
 	uint8  movingSpeed;                                     /*!< The speed of moving as last set. */
 	uint8  wobbleIndex;                                     /*!< At which wobble index the Unit currently is. */
 	 int8  spriteOffset;                                    /*!< Offset of the current sprite for Unit. */
@@ -210,19 +223,19 @@ typedef struct ActionInfo {
 struct Team;
 struct Structure;
 
-extern const char *g_table_movementTypeName[];
+extern const char * const g_table_movementTypeName[MOVEMENT_MAX];
 
-extern const uint16 g_table_actionsAI[];
-extern const ActionInfo g_table_actionInfo[];
-extern UnitInfo g_table_unitInfo[];
+extern const uint16 g_table_actionsAI[4];
+extern const ActionInfo g_table_actionInfo[ACTION_MAX];
+extern UnitInfo g_table_unitInfo[UNIT_MAX];
 
 extern Unit *g_unitActive;
 extern Unit *g_unitHouseMissile;
 extern Unit *g_unitSelected;
 extern int16 g_starportAvailable[UNIT_MAX];
 
-extern uint16 g_var_39E6;
-extern uint16 g_var_39E8;
+extern uint16 g_dirtyUnitCount;
+extern uint16 g_dirtyAirUnitCount;
 
 
 extern void GameLoop_Unit(void);
@@ -240,12 +253,9 @@ extern void Unit_Sort(void);
 extern Unit *Unit_Get_ByPackedTile(uint16 packed);
 extern uint16 Unit_IsValidMovementIntoStructure(Unit *unit, struct Structure *s);
 extern void Unit_SetDestination(Unit *u, uint16 destination);
-extern uint16 Unit_GetTargetUnitPriority(Unit *unit, Unit *target);
 extern uint16 Unit_FindClosestRefinery(Unit *unit);
 extern bool Unit_SetPosition(Unit *u, tile32 position);
 extern void Unit_Remove(Unit *u);
-extern Unit *Unit_FindBestTargetUnit(Unit *u, uint16 mode);
-extern Unit *Unit_Sandworm_FindBestTarget(Unit *unit);
 extern bool Unit_StartMovement(Unit *unit);
 extern void Unit_SetTarget(Unit* unit, uint16 encoded);
 extern bool Unit_Deviation_Decrease(Unit* unit, uint16 amount);
@@ -265,15 +275,19 @@ extern void Unit_DisplayStatusText(Unit *unit);
 extern void Unit_Hide(Unit *unit);
 extern Unit *Unit_CallUnitByType(UnitType type, uint8 houseID, uint16 target, bool createCarryall);
 extern void Unit_EnterStructure(Unit *unit, struct Structure *s);
-extern int16 Unit_GetTileEnterScore(Unit *unit, uint16 packed, uint16 direction);
-extern uint16 Unit_FindBestTargetEncoded(Unit *unit, uint16 mode);
+extern int16 Unit_GetTileEnterScore(Unit *unit, uint16 packed, uint16 orient8);
 extern void Unit_RemovePlayer(Unit *unit);
 extern void Unit_UpdateMap(uint16 type, Unit *unit);
 extern void Unit_RemoveFromTile(Unit *unit, uint16 packed);
 extern void Unit_AddToTile(Unit *unit, uint16 packed);
-extern uint16 Unit_GetTargetStructurePriority(Unit *unit, struct Structure *s);
 extern void Unit_LaunchHouseMissile(uint16 packed);
 extern void Unit_HouseUnitCount_Remove(Unit *unit);
 extern void Unit_HouseUnitCount_Add(Unit *unit, uint8 houseID);
+
+extern uint16 Unit_GetTargetUnitPriority(Unit *unit, Unit *target);
+extern uint16 Unit_GetTargetStructurePriority(Unit *unit, struct Structure *s);
+extern uint16 Unit_FindBestTargetEncoded(Unit *unit, uint16 mode);
+extern Unit *Unit_FindBestTargetUnit(Unit *u, uint16 mode);
+extern Unit *Unit_Sandworm_FindBestTarget(Unit *unit);
 
 #endif /* UNIT_H */

@@ -7,7 +7,7 @@ typedef struct Driver {
 	uint16 index;                                           /*!< Index of the loaded driver. */
 	char   extension[4];                                    /*!< Extension used for music file names. */
 	void  *content;                                         /*!< Pointer to the file to play content. */
-	char  *filename;                                        /*!< Pointer to the name of file to play. */
+	char  filename[14];                                     /*!< Name of file to play. */
 	bool   contentMalloced;                                 /*!< Wether content pointer is the result of a malloc. */
 } Driver;
 
@@ -30,7 +30,7 @@ extern void Driver_Sound_Play(int16 index, int16 volume);
 extern void Driver_Music_Stop(void);
 extern void Driver_Sound_Stop(void);
 extern void Driver_Voice_LoadFile(const char *filename, void *buffer, uint32 length);
-extern void Driver_Voice_Play(const uint8 *data, int16 arg0A);
+extern void Driver_Voice_Play(const uint8 *data, int16 priority);
 extern void Driver_Voice_Stop(void);
 extern void Driver_Sound_LoadFile(const char *musicName);
 extern char *Drivers_GenerateFilename(const char *name, Driver *driver);

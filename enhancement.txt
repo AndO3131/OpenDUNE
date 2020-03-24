@@ -12,7 +12,7 @@ Below is the complete listing of all those bugs and problems, per category.
 Structure
 ---------
 - When building a Wall, the owner-bits are not cleared correctly, which in
-    theory could mean a Wall build by you could show up as owned by Sadukar.
+    theory could mean a Wall build by you could show up as owned by Sardaukar.
 - When building a structure completely on slabs, it still degrades. This seems
     in contrast with the idea of slabs.
 - When building a structure, only the fog is removed (with a radius of 2) from
@@ -47,16 +47,20 @@ Structure
     silently starts the repair of the structure, and doesn't cancel upgrading.
 - Fog is removed around the top left corner instead of the center of a
     structure.
+- The range of a turret was calculated from the top left corner instead of the
+    center of the structure.
+- Fog was not removed from around captured structures.
 
 
 Unit
 ----
 - Once a Unit enters a tile on which it starts to wobble, it will never stop
     wobbling, even if it enters a tile where it shouldn't wobble.
-- The warning of an enemy approach tends to be wrong. This due to a math
-    failure in the code.
 - When a Unit enters a Structure, the last tile the Unit was on becomes
     selected rather than the entire Structure.
+- Deviated units always belong to Ordos, no matter who did the deviating.
+- Saboteurs tend to forget their goal, depending on terrain and game speed:
+    to blow up on reaching their destination.
 
 
 Scenario
@@ -106,5 +110,5 @@ Map
     parameter order is switched, where the type of the unit becomes the number
     of the house, and the house becomes the value of Trike (13). This also
     means that these vehicles read/write outside the house struct, which in
-    terms results in random artifects.
+    terms results in random artifacts.
 

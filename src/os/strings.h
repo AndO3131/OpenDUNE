@@ -21,6 +21,7 @@
 	#define strcasecmp _stricmp
 	#define strncasecmp _strnicmp
 
+	#if _MSC_VER < 1900
 	static int snprintf(char *str, size_t size, const char *format, ...)
 	{
 		va_list ap;
@@ -65,28 +66,31 @@
 		str[size - 1] = '\0';
 		return (int)size;
 	}
+	#endif /* _MSC_VER < 1900 */
+
 #elif !defined(__TINYC__)
 	#include <stdio.h>
 	#include <strings.h>
 	#include <stdarg.h>
 
 	#if defined(__MINGW32__) && defined(__STRICT_ANSI__)
+	#if 0 /* NOTE : disabled because it generates warnings when cross compiling
+	       * for MinGW32 under linux */
 		int __cdecl __MINGW_NOTHROW strcasecmp (const char *, const char *);
 		int __cdecl __MINGW_NOTHROW strncasecmp (const char *, const char *, size_t);
 		char* __cdecl __MINGW_NOTHROW strdup (const char*) __MINGW_ATTRIB_MALLOC;
+	#endif
 	#endif /* __MINGW32__ && __STRICT_ANSI__ */
 
 	#if !defined(__MINGW32__) && defined(__GNUC__) && !defined(snprintf)
 		/* (v)snprintf is in fact C99, but we like to use it over (v)sprintf for the obvious reasons */
-		#if !defined(__APPLE__)
+		#if !defined(__APPLE__) && !defined(TOS) && !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__DJGPP__)
 			extern int snprintf (char *__restrict __s, size_t __maxlen, __const char *__restrict __format, ...) __THROW __attribute__ ((__format__ (__printf__, 3, 4)));
 			extern int vsnprintf (char *__restrict __s, size_t __maxlen, __const char *__restrict __format, va_list __arg) __THROW __attribute__ ((__format__ (__printf__, 3, 0)));
-		#else /* __APPLE__ */
-			extern int snprintf(char * __restrict, size_t, const char * __restrict, ...) __DARWIN_LDBL_COMPAT(snprintf);
 		#endif /* __APPLE__ */
 	#endif /* __GCC__ */
 	
-	#if !defined(__MINGW32__) && defined(__GNUC__) && !defined(strdup)
+	#if !defined(__MINGW32__) && defined(__GNUC__) && !defined(strdup) && !defined(__APPLE__) && !defined(TOS) && !defined(__FreeBSD__) && !defined(__DJGPP__)
 		/* strdup is not ANSI-C, but our own implemention would only be slower */
 		extern char *strdup (__const char *__s);
 	#endif /* __GCC__ */

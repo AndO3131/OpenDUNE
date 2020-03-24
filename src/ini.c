@@ -30,7 +30,7 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 
 	sprintf(buffer, "[%s]", category);
 	for (s = buffer; *s != '\0'; s++) *s = toupper(*s);
-	catLength = strlen(buffer);
+	catLength = (uint16)strlen(buffer);
 
 	ret = source;
 
@@ -41,7 +41,7 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 		if (current == NULL) break;
 
 		if (strncasecmp(current, buffer, catLength) != 0) continue;
-		if (*(current - 1) != '\r' && *(current - 1) != '\n') continue;
+		if (current != source && *(current - 1) != '\r' && *(current - 1) != '\n') continue;
 
 		current += catLength;
 		while (isspace((uint8)*current)) current++;
@@ -58,11 +58,11 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 		if (end == NULL) end = current + strlen(current);
 
 		if (key != NULL) {
-			uint16 keyLength = strlen(key);
+			uint16 keyLength = (uint16)strlen(key);
 
 			ret = current;
 
-			while (true) {
+			while (current < end) {
 				char *value;
 				char *lineEnd;
 
@@ -72,7 +72,8 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 
 				/* Now validate the size and if we match at all */
 				if (*value != '=' || strncasecmp(current, key, keyLength) != 0) {
-					current = strchr(current, '\r');
+					/* Search for LF to support both CR/LF and LF line endings. */
+					current = strchr(current, '\n');
 					if (current == NULL) break;
 					while (isspace((uint8)*current)) current++;
 					if (current > end) break;
@@ -86,14 +87,14 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 				current = value + 1;
 
 				/* Find the end of the line */
-				lineEnd = strchr(current, '\r');
+				lineEnd = strchr(current, '\n');
 				if (lineEnd == NULL) break;
 				while (isspace((uint8)*lineEnd)) lineEnd++;
 				if (lineEnd > end) break;
 
 				/* Copy the value */
 				if (dest != NULL) {
-					uint16 len = lineEnd - current;
+					uint16 len = (uint16)(lineEnd - current);
 					memcpy(dest, current, len);
 					*(dest + len) = '\0';
 
@@ -104,7 +105,6 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 			}
 
 			/* Failed to find the key. Return anyway. */
-			if (dest != NULL) *dest = '\0';
 			return NULL;
 		}
 
@@ -119,7 +119,7 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 			lineEnd = strchr(current, '=');
 			if (lineEnd == NULL || lineEnd > end) break;
 
-			len = lineEnd - current;
+			len = (uint16)(lineEnd - current);
 			memcpy(dest, current, len);
 			*(dest + len) = '\0';
 
@@ -127,13 +127,14 @@ char *Ini_GetString(const char *category, const char *key, const char *defaultVa
 			dest += strlen(dest) + 1;
 
 			/* Find the next line, ignoring all \r\n */
-			current = strchr(current, '\r');
+			current = strchr(current, '\n');
 			if (current == NULL) break;
 			while (isspace((uint8)*current)) current++;
 			if (current > end) break;
 		}
 
 		*dest++ = '\0';
+		/* end the list with a zero element */
 		*dest++ = '\0';
 
 		return ret;
@@ -168,12 +169,16 @@ void Ini_SetString(const char *category, const char *key, const char *value, cha
 
 	s = Ini_GetString(category, key, NULL, NULL, 0, source);
 	if (s != NULL) {
-		uint16 count = strcspn(s, "\r\n");
+		uint16 count = (uint16)strcspn(s, "\r\n");
 		if (count != 0) {
-			strcpy(s, s + count + 1);
+			/* Drop first line if not empty */
+			size_t len = strlen(s + count + 1) + 1;
+			memmove(s, s + count + 1, len);
 		}
 		if (*s == '\n') {
-			strcpy(s, s + 1);
+			/* Drop first line if empty */
+			size_t len = strlen(s + 1) + 1;
+			memmove(s, s + 1, len);
 		}
 	} else {
 		s = Ini_GetString(category, NULL, NULL, NULL, 0, source);

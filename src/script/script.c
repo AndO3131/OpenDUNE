@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include "multichar.h"
 #include "types.h"
 #include "../os/endian.h"
 #include "../os/error.h"
@@ -175,10 +176,18 @@ static void Script_Error(const char *error, ...)
  * @param value The value to push.
  * @note Use SCRIPT_PUSH(position) to use; do not use this function directly.
  */
+#ifdef _DEBUG
 void Script_Stack_Push(ScriptEngine *script, uint16 value, const char *filename, int lineno)
+#else
+void Script_Stack_Push(ScriptEngine *script, uint16 value)
+#endif
 {
 	if (script->stackPointer == 0) {
+#ifdef _DEBUG
 		Script_Error("Stack Overflow at %s:%d", filename, lineno);
+#else
+		Script_Error("Stack Overflow");
+#endif
 		script->script = NULL;
 		return;
 	}
@@ -191,10 +200,18 @@ void Script_Stack_Push(ScriptEngine *script, uint16 value, const char *filename,
  * @return The value that was on the stack.
  * @note Use SCRIPT_POP(position) to use; do not use this function directly.
  */
+#ifdef _DEBUG
 uint16 Script_Stack_Pop(ScriptEngine *script, const char *filename, int lineno)
+#else
+uint16 Script_Stack_Pop(ScriptEngine *script)
+#endif
 {
 	if (script->stackPointer >= 15) {
+#ifdef _DEBUG
 		Script_Error("Stack Overflow at %s:%d", filename, lineno);
+#else
+		Script_Error("Stack Overflow");
+#endif
 		script->script = NULL;
 		return 0;
 	}
@@ -208,12 +225,20 @@ uint16 Script_Stack_Pop(ScriptEngine *script, const char *filename, int lineno)
  * @return The value that was on the stack.
  * @note Use SCRIPT_PEEK(position) to use; do not use this function directly.
  */
+#ifdef _DEBUG
 uint16 Script_Stack_Peek(ScriptEngine *script, int position, const char *filename, int lineno)
+#else
+uint16 Script_Stack_Peek(ScriptEngine *script, int position)
+#endif
 {
 	assert(position > 0);
 
 	if (script->stackPointer >= 16 - position) {
+#ifdef _DEBUG
 		Script_Error("Stack Overflow at %s:%d", filename, lineno);
+#else
+		Script_Error("Stack Overflow");
+#endif
 		script->script = NULL;
 		return 0;
 	}
@@ -295,7 +320,8 @@ bool Script_Run(ScriptEngine *script)
 	if (!Script_IsLoaded(script)) return false;
 	scriptInfo = script->scriptInfo;
 
-	current = BETOH16(*script->script++);
+	current = BETOH16(*script->script);
+	script->script++;
 
 	opcode    = (current >> 8) & 0x1F;
 	parameter = 0;
@@ -309,7 +335,8 @@ bool Script_Run(ScriptEngine *script)
 		parameter = (int16)(int8)(current & 0xFF);
 	} else if ((current & 0x2000) != 0) {
 		/* When this flag is set, the parameter is in the next opcode */
-		parameter = BETOH16(*script->script++);
+		parameter = BETOH16(*script->script);
+		script->script++;
 	}
 
 	switch (opcode) {
@@ -331,7 +358,7 @@ bool Script_Run(ScriptEngine *script)
 
 			if (parameter == 1) { /* PUSH NEXT LOCATION + FRAMEPOINTER */
 				uint32 location;
-				location = (script->script - scriptInfo->start) + 1;
+				location = (uint32)(script->script - scriptInfo->start) + 1;
 
 				STACK_PUSH(location);
 				STACK_PUSH(script->framePointer);
@@ -357,7 +384,11 @@ bool Script_Run(ScriptEngine *script)
 
 		case SCRIPT_PUSH_LOCAL_VARIABLE: {
 			if (script->framePointer - parameter - 2 >= 15) {
+#ifdef _DEBUG
 				Script_Error("Stack Overflow at %s:%d", __FILE__, __LINE__);
+#else
+				Script_Error("Stack Overflow");
+#endif
 				script->script = NULL;
 				return false;
 			}
@@ -368,7 +399,11 @@ bool Script_Run(ScriptEngine *script)
 
 		case SCRIPT_PUSH_PARAMETER: {
 			if (script->framePointer + parameter - 1 >= 15) {
+#ifdef _DEBUG
 				Script_Error("Stack Overflow at %s:%d", __FILE__, __LINE__);
+#else
+				Script_Error("Stack Overflow");
+#endif
 				script->script = NULL;
 				return false;
 			}
@@ -402,7 +437,11 @@ bool Script_Run(ScriptEngine *script)
 
 		case SCRIPT_POP_LOCAL_VARIABLE: {
 			if (script->framePointer - parameter - 2 >= 15) {
+#ifdef _DEBUG
 				Script_Error("Stack Overflow at %s:%d", __FILE__, __LINE__);
+#else
+				Script_Error("Stack Overflow");
+#endif
 				script->script = NULL;
 				return false;
 			}
@@ -413,7 +452,11 @@ bool Script_Run(ScriptEngine *script)
 
 		case SCRIPT_POP_PARAMETER: {
 			if (script->framePointer + parameter - 1 >= 15) {
+#ifdef _DEBUG
 				Script_Error("Stack Overflow at %s:%d", __FILE__, __LINE__);
+#else
+				Script_Error("Stack Overflow");
+#endif
 				script->script = NULL;
 				return false;
 			}
@@ -537,7 +580,7 @@ void Script_LoadAsSubroutine(ScriptEngine *script, uint8 typeID)
 	scriptInfo = script->scriptInfo;
 	script->isSubroutine = 1;
 
-	STACK_PUSH((script->script - scriptInfo->start));
+	STACK_PUSH((uint16)(script->script - scriptInfo->start));
 	STACK_PUSH(script->returnValue);
 
 	script->script = scriptInfo->start + scriptInfo->offsets[typeID];
@@ -591,7 +634,7 @@ uint16 Script_LoadFromFile(const char *filename, ScriptInfo *scriptInfo, const S
 
 	index = ChunkFile_Open(filename);
 
-	length = ChunkFile_Seek(index, HTOBE32('TEXT'));
+	length = ChunkFile_Seek(index, HTOBE32(CC_TEXT));
 	total += length;
 
 	if (length != 0) {
@@ -602,10 +645,10 @@ uint16 Script_LoadFromFile(const char *filename, ScriptInfo *scriptInfo, const S
 			scriptInfo->text = calloc(1, length);
 		}
 
-		ChunkFile_Read(index, HTOBE32('TEXT'), scriptInfo->text, length);
+		ChunkFile_Read(index, HTOBE32(CC_TEXT), scriptInfo->text, length);
 	}
 
-	length = ChunkFile_Seek(index, HTOBE32('ORDR'));
+	length = ChunkFile_Seek(index, HTOBE32(CC_ORDR));
 	total += length;
 
 	if (length == 0) {
@@ -622,13 +665,13 @@ uint16 Script_LoadFromFile(const char *filename, ScriptInfo *scriptInfo, const S
 	}
 
 	scriptInfo->offsetsCount = (length >> 1) & 0xFFFF;
-	ChunkFile_Read(index, HTOBE32('ORDR'), scriptInfo->offsets, length);
+	ChunkFile_Read(index, HTOBE32(CC_ORDR), scriptInfo->offsets, length);
 
 	for(i = 0; i < (int16)((length >> 1) & 0xFFFF); i++) {
 		scriptInfo->offsets[i] = BETOH16(scriptInfo->offsets[i]);
 	}
 
-	length = ChunkFile_Seek(index, HTOBE32('DATA'));
+	length = ChunkFile_Seek(index, HTOBE32(CC_DATA));
 	total += length;
 
 	if (length == 0) {
@@ -645,7 +688,7 @@ uint16 Script_LoadFromFile(const char *filename, ScriptInfo *scriptInfo, const S
 	}
 
 	scriptInfo->startCount = (length >> 1) & 0xFFFF;
-	ChunkFile_Read(index, HTOBE32('DATA'), scriptInfo->start, length);
+	ChunkFile_Read(index, HTOBE32(CC_DATA), scriptInfo->start, length);
 
 	ChunkFile_Close(index);
 

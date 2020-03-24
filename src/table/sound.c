@@ -5,8 +5,18 @@
 
 #include "../audio/sound.h"
 
-/** Available voices. */
-const SoundData g_table_voices[NUM_VOICES] = {
+/** Available voices.
+ * Prefix :
+ *  '+' : Don't include in voiceSet 0xFFFF
+ *  '?' : don't preload voice in RAM
+ *  '/' : Only include in voiceSet 0xFFFE
+ *  '-' : Only include in voiceSet 0xFFFF
+ *  '%' : Don't include in voiceSet 0xFFFF and 0xFFFE
+ * %c => replaced by language 'F'(french) 'G'(german) 'Z'
+ *       or house prefix char ('A'treides, 'O'rdos or Fremen,
+ *           'H'arkonnen or Sardokar, 'M'ercenary)
+ */
+const VoiceData g_table_voices[NUM_VOICES] = {
 	{"+VSCREAM1.VOC",  11}, /*   0 */
 	{"+EXSAND.VOC",    10}, /*   1 */
 	{"+ROCKET.VOC",    11}, /*   2 */
@@ -166,7 +176,7 @@ static const char _music_dune20[] = "dune20";
  * Available music.
  * @note The code compares pointers rather than the text itself, thus strings must be unique.
  */
-const SoundData g_table_musics[] = {
+const MusicData g_table_musics[] = {
 	{NULL,          0}, /*  0 */
 	{_music_dune01, 2}, /*  1 */
 	{_music_dune01, 3}, /*  2 */
@@ -422,7 +432,7 @@ const Feedback g_feedback[] = {
 	{{0x0076, 0x0053, 0x0054, 0xFFFF, 0xFFFF}, 0x00, 0xFFFF}, /* 81 */
 	{{0x0068, 0x0071, 0x0059, 0xFFFF, 0xFFFF}, 0x00, 0xFFFF}, /* 82 */
 	{{0x005C, 0x005E, 0x0061, 0x005B, 0xFFFF}, 0x00, 0xFFFF}, /* 83 */
-	{{0x0062, 0x0060, 0x005A, 0x005F, 0xFFFF}, 0x00, 0xFFFF}, /* 84 */
+	{{0x0062, 0x0060, 0xFFFF, 0xFFFF, 0xFFFF}, 0x00, 0xFFFF}, /* 84 */
 	{{0x005A, 0x005F, 0xFFFF, 0xFFFF, 0xFFFF}, 0x00, 0xFFFF}, /* 85 */
 	{{0x0075, 0x004F, 0xFFFF, 0xFFFF, 0xFFFF}, 0x00, 0xFFFF}, /* 86 */
 	{{0x004E, 0x004D, 0x0055, 0x006D, 0xFFFF}, 0x01, 0xFFFF}, /* 87 */
@@ -520,7 +530,7 @@ const uint16 g_translatedVoice[][NUM_SPEECH_PARTS] = {
 	{0x0076, 0x0053, 0x0054, 0xFFFF, 0xFFFF}, /* 81 */
 	{0x0068, 0x0071, 0x0059, 0xFFFF, 0xFFFF}, /* 82 */
 	{0x005C, 0x005E, 0x0061, 0x005B, 0xFFFF}, /* 83 */
-	{0x0062, 0x0060, 0x005A, 0x005F, 0xFFFF}, /* 84 */
+	{0x0062, 0x0060, 0xFFFF, 0xFFFF, 0xFFFF}, /* 84 */
 	{0x005A, 0x005F, 0xFFFF, 0xFFFF, 0xFFFF}, /* 85 */
 	{0x0075, 0x004F, 0xFFFF, 0xFFFF, 0xFFFF}, /* 86 */
 	{0x004E, 0x004D, 0x0055, 0x006D, 0xFFFF}, /* 87 */

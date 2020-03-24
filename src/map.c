@@ -29,9 +29,10 @@
 #include "tools.h"
 #include "tile.h"
 #include "unit.h"
+#include "file.h"
 
 
-uint16 g_mapSpriteID[64 * 64];
+uint16 g_mapTileID[64 * 64];
 Tile g_map[64 * 64];                                        /*!< All map data. */
 uint8 g_functions[3][3] = {{0, 1, 0}, {2, 3, 0}, {0, 1, 0}};
 
@@ -47,7 +48,7 @@ uint8 g_changedTilesMap[512];                               /*!< Bit array of ch
 static bool s_debugNoExplosionDamage = false;               /*!< When non-zero, explosions do no damage to their surrounding. */
 
 uint16 g_dirtyViewportCount = 0;
-uint16 g_var_3A08 = 0;
+bool g_selectionRectangleNeedRepaint = false;
 
 /**
  * Map definitions.
@@ -105,7 +106,7 @@ void Map_SetSelection(uint16 packed)
 		return;
 	}
 
-	if ((packed != 0xFFFF && g_map[packed].overlaySpriteID != g_veiledSpriteID) || g_debugScenario) {
+	if ((packed != 0xFFFF && g_map[packed].overlayTileID != g_veiledTileID) || g_debugScenario) {
 		Structure *s;
 
 		s = Structure_Get_ByPackedTile(packed);
@@ -332,66 +333,6 @@ bool Map_IsValidPosition(uint16 position)
 }
 
 /**
- * Save all Tiles to a file.
- * @param fp The file to save to.
- * @return True if and only if all bytes were written successful.
- */
-bool Map_Save(FILE *fp)
-{
-	uint16 i;
-
-	for (i = 0; i < 0x1000; i++) {
-		Tile *tile = &g_map[i];
-
-		/* If there is nothing on the tile, not unveiled, and it is equal to the mapseed generated tile, don't store it */
-		if (!tile->isUnveiled && !tile->hasStructure && !tile->hasUnit && !tile->hasAnimation && !tile->hasExplosion && (g_mapSpriteID[i] & 0x8000) == 0 && g_mapSpriteID[i] == tile->groundSpriteID) continue;
-
-		/* Store the index, then the tile itself */
-		if (fwrite(&i, sizeof(uint16), 1, fp) != 1) return false;
-		if (fwrite(tile, sizeof(Tile), 1, fp) != 1) return false;
-	}
-
-	return true;
-}
-
-/**
- * Load all Tiles from a file.
- * @param fp The file to load from.
- * @param length The length of the data chunk.
- * @return True if and only if all bytes were read successful.
- */
-bool Map_Load(FILE *fp, uint32 length)
-{
-	uint16 i;
-
-	for (i = 0; i < 0x1000; i++) {
-		Tile *t = &g_map[i];
-
-		t->isUnveiled = false;
-		t->overlaySpriteID = g_veiledSpriteID;
-	}
-
-	while (length >= sizeof(uint16) + sizeof(Tile)) {
-		Tile *t;
-
-		length -= sizeof(uint16) + sizeof(Tile);
-
-		if (fread(&i, sizeof(uint16), 1, fp) != 1) return false;
-		if (i >= 0x1000) return false;
-
-		t = &g_map[i];
-		if (fread(t, sizeof(Tile), 1, fp) != 1) return false;
-
-		if (g_mapSpriteID[i] != t->groundSpriteID) {
-			g_mapSpriteID[i] |= 0x8000;
-		}
-	}
-	if (length != 0) return false;
-
-	return true;
-}
-
-/**
  * Check if a position is unveiled (the fog is removed).
  *
  * @param position For which position to check.
@@ -406,7 +347,7 @@ bool Map_IsPositionUnveiled(uint16 position)
 	t = &g_map[position];
 
 	if (!t->isUnveiled) return false;
-	if (!Sprite_IsUnveiled(t->overlaySpriteID)) return false;
+	if (!Tile_IsUnveiled(t->overlayTileID)) return false;
 
 	return true;
 }
@@ -423,8 +364,8 @@ bool Map_IsPositionInViewport(tile32 position, uint16 *retX, uint16 *retY)
 {
 	int16 x, y;
 
-	x = (position.s.x >> 4) - (Tile_GetPackedX(g_viewportPosition) << 4);
-	y = (position.s.y >> 4) - (Tile_GetPackedY(g_viewportPosition) << 4);
+	x = (position.x >> 4) - (Tile_GetPackedX(g_viewportPosition) << 4);
+	y = (position.y >> 4) - (Tile_GetPackedY(g_viewportPosition) << 4);
 
 	if (retX != NULL) *retX = x;
 	if (retY != NULL) *retY = y;
@@ -436,13 +377,13 @@ static bool Map_UpdateWall(uint16 packed)
 {
 	Tile *t;
 
-	if (Map_GetLandscapeType(packed) != LST_WALL) return 0;
+	if (Map_GetLandscapeType(packed) != LST_WALL) return false;
 
 	t = &g_map[packed];
 
-	t->groundSpriteID = g_mapSpriteID[packed] & 0x1FF;
+	t->groundTileID = g_mapTileID[packed] & 0x1FF;
 
-	if (Map_IsPositionUnveiled(packed)) t->overlaySpriteID = g_wallSpriteID;
+	if (Map_IsPositionUnveiled(packed)) t->overlayTileID = g_wallTileID;
 
 	Structure_ConnectWall(packed, true);
 	Map_Update(packed, 0, false);
@@ -562,17 +503,10 @@ void Map_MakeExplosion(uint16 type, tile32 position, uint16 hitpoints, uint16 un
 	}
 
 	if (Map_GetLandscapeType(positionPacked) == LST_WALL && hitpoints != 0) {
-		bool loc22 = false;
-
-		if (g_table_structureInfo[STRUCTURE_TURRET].o.hitpoints <= hitpoints) loc22 = true;
-
-		if (!loc22) {
-			uint16 loc24 = hitpoints * 256 / g_table_structureInfo[STRUCTURE_TURRET].o.hitpoints;
-
-			if (Tools_Random_256() <= loc24) loc22 = true;
+		if ((g_table_structureInfo[STRUCTURE_WALL].o.hitpoints <= hitpoints) ||
+		    (Tools_Random_256() <= (hitpoints * 256 / g_table_structureInfo[STRUCTURE_WALL].o.hitpoints))) {
+			Map_UpdateWall(positionPacked);
 		}
-
-		if (loc22) Map_UpdateWall(positionPacked);
 	}
 
 	Explosion_Start(type, position);
@@ -611,17 +545,17 @@ uint16 Map_GetLandscapeType(uint16 packed)
 
 	t = &g_map[packed];
 
-	if (t->groundSpriteID == g_builtSlabSpriteID) return LST_CONCRETE_SLAB;
+	if (t->groundTileID == g_builtSlabTileID) return LST_CONCRETE_SLAB;
 
-	if (t->groundSpriteID == g_bloomSpriteID || t->groundSpriteID == g_bloomSpriteID + 1) return LST_BLOOM_FIELD;
+	if (t->groundTileID == g_bloomTileID || t->groundTileID == g_bloomTileID + 1) return LST_BLOOM_FIELD;
 
-	if (t->groundSpriteID > g_wallSpriteID && (uint16)t->groundSpriteID < g_wallSpriteID + 75) return LST_WALL;
+	if (t->groundTileID > g_wallTileID && (uint16)t->groundTileID < g_wallTileID + 75) return LST_WALL;
 
-	if (t->overlaySpriteID == g_wallSpriteID) return LST_DESTROYED_WALL;
+	if (t->overlayTileID == g_wallTileID) return LST_DESTROYED_WALL;
 
 	if (Structure_Get_ByPackedTile(packed) != NULL) return LST_STRUCTURE;
 
-	spriteOffset = t->groundSpriteID - g_landscapeSpriteID; /* Offset in the landscape icon group. */
+	spriteOffset = t->groundTileID - g_landscapeTileID; /* Offset in the landscape icon group. */
 	if (spriteOffset < 0 || spriteOffset > 80) return LST_ENTIRELY_ROCK;
 
 	return _landscapeSpriteMap[spriteOffset];
@@ -655,7 +589,7 @@ static bool Map_IsTileVisible(uint16 packed)
  */
 void Map_Update(uint16 packed, uint16 type, bool ignoreInvisible)
 {
-	static int16 offsets[9] = {
+	static const int16 offsets[9] = {
 		-64, /* up */
 		-63, /* up right */
 		1,   /* right */
@@ -682,7 +616,7 @@ void Map_Update(uint16 packed, uint16 type, bool ignoreInvisible)
 			for (i = 0; i < 9; i++) {
 				curPacked = (packed + offsets[i]) & 0xFFF;
 				BitArray_Set(g_dirtyViewport, curPacked);
-				if (BitArray_Test(g_displayedViewport, curPacked)) g_var_3A08 = 1;
+				if (BitArray_Test(g_displayedViewport, curPacked)) g_selectionRectangleNeedRepaint = true;
 			}
 
 			BitArray_Set(g_dirtyMinimap, curPacked);
@@ -736,7 +670,7 @@ void Map_Bloom_ExplodeSpice(uint16 packed, uint8 houseID)
 {
 	if (g_validateStrictIfZero == 0) {
 		Unit_Remove(Unit_Get_ByPackedTile(packed));
-		g_map[packed].groundSpriteID = g_mapSpriteID[packed] & 0x1FF;
+		g_map[packed].groundTileID = g_mapTileID[packed] & 0x1FF;
 		Map_MakeExplosion(EXPLOSION_SPICE_BLOOM_TREMOR, Tile_UnpackTile(packed), 0, 0);
 	}
 
@@ -790,9 +724,6 @@ void Map_FillCircleWithSpice(uint16 packed, uint16 radius)
  */
 static void Map_FixupSpiceEdges(uint16 packed)
 {
-	/* Relative steps in the map array for moving up, right, down, left. */
-	static const int16 _mapDifference[] = {-64, 1, 64, -1};
-
 	uint16 type;
 	uint16 spriteID;
 
@@ -804,7 +735,7 @@ static void Map_FixupSpiceEdges(uint16 packed)
 		uint8 i;
 
 		for (i = 0; i < 4; i++) {
-			uint16 curPacked = packed + _mapDifference[i];
+			const uint16 curPacked = packed + g_table_mapDiff[i];
 			uint16 curType;
 
 			if (Tile_IsOutOfMap(curPacked)) {
@@ -825,8 +756,8 @@ static void Map_FixupSpiceEdges(uint16 packed)
 		spriteID += (type == LST_SPICE) ? 49 : 65;
 
 		spriteID = g_iconMap[g_iconMap[ICM_ICONGROUP_LANDSCAPE] + spriteID] & 0x1FF;
-		g_mapSpriteID[packed] = 0x8000 | spriteID;
-		g_map[packed].groundSpriteID = spriteID;
+		g_mapTileID[packed] = 0x8000 | spriteID;
+		g_map[packed].groundTileID = spriteID;
 	}
 
 	Map_Update(packed, 0, false);
@@ -861,8 +792,8 @@ void Map_ChangeSpiceAmount(uint16 packed, int16 dir)
 	if (type == LST_THICK_SPICE) spriteID = 65;
 
 	spriteID = g_iconMap[g_iconMap[ICM_ICONGROUP_LANDSCAPE] + spriteID] & 0x1FF;
-	g_mapSpriteID[packed] = 0x8000 | spriteID;
-	g_map[packed].groundSpriteID = spriteID;
+	g_mapTileID[packed] = 0x8000 | spriteID;
+	g_map[packed].groundTileID = spriteID;
 
 	Map_FixupSpiceEdges(packed);
 	Map_FixupSpiceEdges(packed + 1);
@@ -907,8 +838,8 @@ void Map_Bloom_ExplodeSpecial(uint16 packed, uint8 houseID)
 
 	h = House_Get_ByIndex(houseID);
 
-	g_map[packed].groundSpriteID = g_landscapeSpriteID;
-	g_mapSpriteID[packed] = 0x8000 | g_landscapeSpriteID;
+	g_map[packed].groundTileID = g_landscapeTileID;
+	g_mapTileID[packed] = 0x8000 | g_landscapeTileID;
 
 	Map_Update(packed, 0, false);
 
@@ -985,12 +916,11 @@ void Map_Bloom_ExplodeSpecial(uint16 packed, uint8 houseID)
  */
 uint16 Map_FindLocationTile(uint16 locationID, uint8 houseID)
 {
-	static int16 mapBase[3] = {1, -2, -2};
+	static const int16 mapBase[3] = {1, -2, -2};
+	const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
+	const uint16 mapOffset = mapBase[g_scenario.mapScale];
 
 	uint16 ret = 0;
-	uint16 mapOffset;
-
-	mapOffset = mapBase[g_scenario.mapScale];
 
 	if (locationID == 6) { /* Enemy Base */
 		PoolFindStruct find;
@@ -1005,6 +935,7 @@ uint16 Map_FindLocationTile(uint16 locationID, uint8 houseID)
 
 			s = Structure_Find(&find);
 			if (s == NULL) break;
+			if (s->o.type == STRUCTURE_SLAB_1x1 || s->o.type == STRUCTURE_SLAB_2x2 || s->o.type == STRUCTURE_WALL) continue;
 
 			if (s->o.houseID == houseID) continue;
 
@@ -1015,36 +946,26 @@ uint16 Map_FindLocationTile(uint16 locationID, uint8 houseID)
 
 	while (ret == 0) {
 		switch (locationID) {
-			case 0: { /* North */
-				const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
+			case 0: /* North */
 				ret = Tile_PackXY(mapInfo->minX + Tools_RandomLCG_Range(0, mapInfo->sizeX - 2), mapInfo->minY + mapOffset);
 				break;
-			}
 
-			case 1: { /* East */
-				const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
+			case 1: /* East */
 				ret = Tile_PackXY(mapInfo->minX + mapInfo->sizeX - mapOffset, mapInfo->minY + Tools_RandomLCG_Range(0, mapInfo->sizeY - 2));
 				break;
-			}
 
-			case 2: { /* South */
-				const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
+			case 2: /* South */
 				ret = Tile_PackXY(mapInfo->minX + Tools_RandomLCG_Range(0, mapInfo->sizeX - 2), mapInfo->minY + mapInfo->sizeY - mapOffset);
 				break;
-			}
 
-			case 3: { /* West */
-				const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
+			case 3: /* West */
 				ret = Tile_PackXY(mapInfo->minX + mapOffset, mapInfo->minY + Tools_RandomLCG_Range(0, mapInfo->sizeY - 2));
 				break;
-			}
 
-			case 4: { /* Air */
-				const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
+			case 4: /* Air */
 				ret = Tile_PackXY(mapInfo->minX + Tools_RandomLCG_Range(0, mapInfo->sizeX), mapInfo->minY + Tools_RandomLCG_Range(0, mapInfo->sizeY));
 				if (houseID == g_playerHouseID && !Map_IsValidPosition(ret)) ret = 0;
 				break;
-			}
 
 			case 5: /* Visible */
 				ret = Tile_PackXY(Tile_GetPackedX(g_minimapPosition) + Tools_RandomLCG_Range(0, 14), Tile_GetPackedY(g_minimapPosition) + Tools_RandomLCG_Range(0, 9));
@@ -1076,7 +997,6 @@ uint16 Map_FindLocationTile(uint16 locationID, uint8 houseID)
 					if (u != NULL) {
 						ret = Tile_PackTile(Tile_MoveByRandom(u->o.position, 120, true));
 					} else {
-						const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
 						ret = Tile_PackXY(mapInfo->minX + Tools_RandomLCG_Range(0, mapInfo->sizeX), mapInfo->minY + Tools_RandomLCG_Range(0, mapInfo->sizeY));
 					}
 				}
@@ -1107,19 +1027,19 @@ uint16 Map_FindLocationTile(uint16 locationID, uint8 houseID)
  */
 void Map_UpdateAround(uint16 radius, tile32 position, Unit *unit, uint8 function)
 {
-	static const uint32 tileOffsets[] = {
-		0x00800080, 0x00880088, 0x00900090, 0x00980098,
-		0x00A000A0, 0x00A800A8, 0x00B000B0, 0x00B800B8,
-		0x00C000C0, 0x00C800C8, 0x00D000D0, 0x00D800D8,
-		0x00E000E0, 0x00E800E8, 0x00F000F0, 0x00F800F8,
-		0x01000100, 0x01800180
+	static const uint16 tileOffsets[] = {
+		0x0080, 0x0088, 0x0090, 0x0098,
+		0x00A0, 0x00A8, 0x00B0, 0x00B8,
+		0x00C0, 0x00C8, 0x00D0, 0x00D8,
+		0x00E0, 0x00E8, 0x00F0, 0x00F8,
+		0x0100, 0x0180
 	};
 
-	uint16 i;
+	int16 i, j;
 	tile32 diff;
 	uint16 lastPacked;
 
-	if (radius == 0 || position.tile == 0) return;
+	if (radius == 0 || (position.x == 0 && position.y == 0)) return;
 
 	radius--;
 
@@ -1127,8 +1047,6 @@ void Map_UpdateAround(uint16 radius, tile32 position, Unit *unit, uint8 function
 	if (radius >= 32) {
 		uint16 x = Tile_GetPosX(position);
 		uint16 y = Tile_GetPosY(position);
-		int16 j;
-		int16 i;
 
 		for (i = -2; i <= 2; i++) {
 			for (j = -2; j <= 2; j++) {
@@ -1153,9 +1071,11 @@ void Map_UpdateAround(uint16 radius, tile32 position, Unit *unit, uint8 function
 	}
 
 	radius = max(radius, 15);
-	position.tile -= tileOffsets[radius - 15];
+	position.x -= tileOffsets[radius - 15];
+	position.y -= tileOffsets[radius - 15];
 
-	diff.tile = 0;
+	diff.x = 0;
+	diff.y = 0;
 	lastPacked = 0;
 
 	i = 0;
@@ -1183,7 +1103,7 @@ void Map_UpdateAround(uint16 radius, tile32 position, Unit *unit, uint8 function
 
 		if (i == 8) break;
 		diff = g_table_tilediff[radius + 1][i++];
-	} while (diff.tile != 0);
+	} while ((diff.x != 0) || (diff.y != 0));
 }
 
 /**
@@ -1326,6 +1246,8 @@ void Map_SelectNext(bool getNext)
 		s = Structure_Find(&find);
 		if (s == NULL) break;
 
+		if (s->o.type == STRUCTURE_SLAB_1x1 || s->o.type == STRUCTURE_SLAB_2x2 || s->o.type == STRUCTURE_WALL) continue;
+
 		if (!Map_IsTileVisible(Tile_PackTile(s->o.position))) continue;
 
 		if ((s->o.seenByHouses & (1 << g_playerHouseID)) == 0) continue;
@@ -1368,44 +1290,40 @@ void Map_SelectNext(bool getNext)
  */
 static void Map_UnveilTile_Neighbour(uint16 packed)
 {
-	uint16 spriteID;
+	uint16 tileID;
 	Tile *t;
 
 	if (Tile_IsOutOfMap(packed)) return;
 
 	t = &g_map[packed];
 
-	spriteID = 15;
+	tileID = 15;
 	if (t->isUnveiled) {
 		int i;
 
-		if (g_validateStrictIfZero == 0 && Sprite_IsUnveiled(t->overlaySpriteID)) return;
+		if (g_validateStrictIfZero == 0 && Tile_IsUnveiled(t->overlayTileID)) return;
 
-		spriteID = 0;
+		tileID = 0;
 
 		for (i = 0; i < 4; i++) {
-			static const int16 mapOffset[] = {-64, 1, 64, -1};
-			uint16 neighbour = packed + mapOffset[i];
+			const uint16 neighbour = packed + g_table_mapDiff[i];
 
-			if (Tile_IsOutOfMap(neighbour)) {
-				spriteID |= 1 << i;
-				continue;
+			if (Tile_IsOutOfMap(neighbour) || !g_map[neighbour].isUnveiled) {
+				tileID |= 1 << i;
 			}
-
-			if (!g_map[neighbour].isUnveiled) spriteID |= 1 << i;
 		}
 	}
 
-	if (spriteID != 0) {
-		if (spriteID != 15) {
+	if (tileID != 0) {
+		if (tileID != 15) {
 			Unit *u = Unit_Get_ByPackedTile(packed);
 			if (u != NULL) Unit_HouseUnitCount_Add(u, g_playerHouseID);
 		}
 
-		spriteID = g_iconMap[g_iconMap[ICM_ICONGROUP_FOG_OF_WAR] + spriteID];
+		tileID = g_iconMap[g_iconMap[ICM_ICONGROUP_FOG_OF_WAR] + tileID];
 	}
 
-	t->overlaySpriteID = spriteID;
+	t->overlayTileID = tileID;
 
 	Map_Update(packed, 0, false);
 }
@@ -1427,7 +1345,7 @@ bool Map_UnveilTile(uint16 packed, uint8 houseID)
 
 	t = &g_map[packed];
 
-	if (t->isUnveiled && Sprite_IsUnveiled(t->overlaySpriteID)) return false;
+	if (t->isUnveiled && Tile_IsUnveiled(t->overlayTileID)) return false;
 	t->isUnveiled = true;
 
 	Map_MarkTileDirty(packed);
@@ -1460,9 +1378,9 @@ static void Map_AddSpiceOnTile(uint16 packed)
 
 	t = &g_map[packed];
 
-	switch (t->groundSpriteID) {
+	switch (t->groundTileID) {
 		case LST_SPICE:
-			t->groundSpriteID = LST_THICK_SPICE;
+			t->groundTileID = LST_THICK_SPICE;
 			Map_AddSpiceOnTile(packed);
 			return;
 
@@ -1479,19 +1397,19 @@ static void Map_AddSpiceOnTile(uint16 packed)
 
 					t2 = &g_map[packed2];
 
-					if (!g_table_landscapeInfo[t2->groundSpriteID].canBecomeSpice) {
-						t->groundSpriteID = LST_SPICE;
+					if (!g_table_landscapeInfo[t2->groundTileID].canBecomeSpice) {
+						t->groundTileID = LST_SPICE;
 						continue;
 					}
 
-					if (t2->groundSpriteID != LST_THICK_SPICE) t2->groundSpriteID = LST_SPICE;
+					if (t2->groundTileID != LST_THICK_SPICE) t2->groundTileID = LST_SPICE;
 				}
 			}
 			return;
 		}
 
 		default:
-			if (g_table_landscapeInfo[t->groundSpriteID].canBecomeSpice) t->groundSpriteID = LST_SPICE;
+			if (g_table_landscapeInfo[t->groundTileID].canBecomeSpice) t->groundTileID = LST_SPICE;
 			return;
 	}
 }
@@ -1564,7 +1482,7 @@ void Map_CreateLandscape(uint32 seed)
 
 	for (j = 0; j < 16; j++) {
 		for (i = 0; i < 16; i++) {
-			g_map[Tile_PackXY(i * 4, j * 4)].groundSpriteID = memory[j * 16 + i];
+			g_map[Tile_PackXY(i * 4, j * 4)].groundTileID = memory[j * 16 + i];
 		}
 	}
 
@@ -1576,6 +1494,7 @@ void Map_CreateLandscape(uint32 seed)
 				uint16 packed1;
 				uint16 packed2;
 				uint16 packed;
+				uint16 sprite2;
 
 				packed1 = Tile_PackXY(i * 4 + offsets[0], j * 4 + offsets[1]);
 				packed2 = Tile_PackXY(i * 4 + offsets[2], j * 4 + offsets[3]);
@@ -1585,8 +1504,16 @@ void Map_CreateLandscape(uint32 seed)
 
 				packed1 = Tile_PackXY((i * 4 + offsets[0]) & 0x3F, j * 4 + offsets[1]);
 				packed2 = Tile_PackXY((i * 4 + offsets[2]) & 0x3F, j * 4 + offsets[3]);
+				assert(packed1 < 64 * 64);
 
-				g_map[packed].groundSpriteID = (g_map[packed1].groundSpriteID + g_map[packed2].groundSpriteID + 1) / 2;
+				/* ENHANCEMENT -- use groundTileID=0 when out-of-bounds to generate the original maps. */
+				if (packed2 < 64 * 64) {
+					sprite2 = g_map[packed2].groundTileID;
+				} else {
+					sprite2 = 0;
+				}
+
+				g_map[packed].groundTileID = (g_map[packed1].groundTileID + sprite2 + 1) / 2;
 			}
 		}
 	}
@@ -1598,7 +1525,7 @@ void Map_CreateLandscape(uint32 seed)
 		Tile *t = &g_map[j * 64];
 		memcpy(previousRow, currentRow, 128);
 
-		for (i = 0; i < 64; i++) currentRow[i] = t[i].groundSpriteID;
+		for (i = 0; i < 64; i++) currentRow[i] = t[i].groundTileID;
 
 		for (i = 0; i < 64; i++) {
 			uint16 neighbours[9];
@@ -1610,12 +1537,12 @@ void Map_CreateLandscape(uint32 seed)
 			neighbours[3] = (i == 0)             ? currentRow[i] : currentRow[i - 1];
 			neighbours[4] =                        currentRow[i];
 			neighbours[5] = (i == 63)            ? currentRow[i] : currentRow[i + 1];
-			neighbours[6] = (i == 0  || j == 63) ? currentRow[i] : t[i + 63].groundSpriteID;
-			neighbours[7] = (           j == 63) ? currentRow[i] : t[i + 64].groundSpriteID;
-			neighbours[8] = (i == 63 || j == 63) ? currentRow[i] : t[i + 65].groundSpriteID;
+			neighbours[6] = (i == 0  || j == 63) ? currentRow[i] : t[i + 63].groundTileID;
+			neighbours[7] = (           j == 63) ? currentRow[i] : t[i + 64].groundTileID;
+			neighbours[8] = (i == 63 || j == 63) ? currentRow[i] : t[i + 65].groundTileID;
 
 			for (k = 0; k < 9; k++) total += neighbours[k];
-			t[i].groundSpriteID = total / 9;
+			t[i].groundTileID = total / 9;
 		}
 	}
 
@@ -1628,7 +1555,7 @@ void Map_CreateLandscape(uint32 seed)
 	if (spriteID2 > spriteID1 - 3) spriteID2 = spriteID1 - 3;
 
 	for (i = 0; i < 4096; i++) {
-		uint16 spriteID = g_map[i].groundSpriteID;
+		uint16 spriteID = g_map[i].groundTileID;
 
 		if (spriteID > spriteID1 + 4) {
 			spriteID = LST_ENTIRELY_MOUNTAIN;
@@ -1640,7 +1567,7 @@ void Map_CreateLandscape(uint32 seed)
 			spriteID = LST_NORMAL_SAND;
 		}
 
-		g_map[i].groundSpriteID = spriteID;
+		g_map[i].groundTileID = spriteID;
 	}
 
 	/* Add some spice. */
@@ -1653,7 +1580,7 @@ void Map_CreateLandscape(uint32 seed)
 			packed = Tools_Random_256() & 0x3F;
 			packed = Tile_PackXY(Tools_Random_256() & 0x3F, packed);
 
-			if (g_table_landscapeInfo[g_map[packed].groundSpriteID].canBecomeSpice) break;
+			if (g_table_landscapeInfo[g_map[packed].groundTileID].canBecomeSpice) break;
 		}
 
 		tile = Tile_UnpackTile(packed);
@@ -1676,20 +1603,20 @@ void Map_CreateLandscape(uint32 seed)
 
 		memcpy(previousRow, currentRow, 128);
 
-		for (i = 0; i < 64; i++) currentRow[i] = t[i].groundSpriteID;
+		for (i = 0; i < 64; i++) currentRow[i] = t[i].groundTileID;
 
 		for (i = 0; i < 64; i++) {
-			uint16 current = t[i].groundSpriteID;
+			uint16 current = t[i].groundTileID;
 			uint16 up      = (j == 0)  ? current : previousRow[i];
-			uint16 left    = (i == 63) ? current : currentRow[i + 1];
-			uint16 down    = (j == 63) ? current : t[i + 64].groundSpriteID;
-			uint16 right   = (i == 0)  ? current : currentRow[i - 1];
+			uint16 right   = (i == 63) ? current : currentRow[i + 1];
+			uint16 down    = (j == 63) ? current : t[i + 64].groundTileID;
+			uint16 left    = (i == 0)  ? current : currentRow[i - 1];
 			uint16 spriteID = 0;
 
 			if (up    == current) spriteID |= 1;
-			if (left  == current) spriteID |= 2;
+			if (right == current) spriteID |= 2;
 			if (down  == current) spriteID |= 4;
-			if (right == current) spriteID |= 8;
+			if (left  == current) spriteID |= 8;
 
 			switch (current) {
 				case LST_NORMAL_SAND:
@@ -1697,9 +1624,9 @@ void Map_CreateLandscape(uint32 seed)
 					break;
 				case LST_ENTIRELY_ROCK:
 					if (up    == LST_ENTIRELY_MOUNTAIN) spriteID |= 1;
-					if (left  == LST_ENTIRELY_MOUNTAIN) spriteID |= 2;
+					if (right == LST_ENTIRELY_MOUNTAIN) spriteID |= 2;
 					if (down  == LST_ENTIRELY_MOUNTAIN) spriteID |= 4;
-					if (right == LST_ENTIRELY_MOUNTAIN) spriteID |= 8;
+					if (left  == LST_ENTIRELY_MOUNTAIN) spriteID |= 8;
 					spriteID++;
 					break;
 				case LST_ENTIRELY_DUNE:
@@ -1710,9 +1637,9 @@ void Map_CreateLandscape(uint32 seed)
 					break;
 				case LST_SPICE:
 					if (up    == LST_THICK_SPICE) spriteID |= 1;
-					if (left  == LST_THICK_SPICE) spriteID |= 2;
+					if (right == LST_THICK_SPICE) spriteID |= 2;
 					if (down  == LST_THICK_SPICE) spriteID |= 4;
-					if (right == LST_THICK_SPICE) spriteID |= 8;
+					if (left  == LST_THICK_SPICE) spriteID |= 8;
 					spriteID += 49;
 					break;
 				case LST_THICK_SPICE:
@@ -1721,7 +1648,7 @@ void Map_CreateLandscape(uint32 seed)
 				default: break;
 			}
 
-			t[i].groundSpriteID = spriteID;
+			t[i].groundTileID = spriteID;
 		}
 	}
 
@@ -1731,18 +1658,18 @@ void Map_CreateLandscape(uint32 seed)
 	for (i = 0; i < 4096; i++) {
 		Tile *t = &g_map[i];
 
-		t->groundSpriteID  = iconMap[t->groundSpriteID];
-		t->overlaySpriteID = g_veiledSpriteID;
-		t->houseID         = HOUSE_HARKONNEN;
-		t->isUnveiled      = false;
-		t->hasUnit         = false;
-		t->hasStructure    = false;
-		t->hasAnimation    = false;
+		t->groundTileID  = iconMap[t->groundTileID];
+		t->overlayTileID = g_veiledTileID;
+		t->houseID       = HOUSE_HARKONNEN;
+		t->isUnveiled    = false;
+		t->hasUnit       = false;
+		t->hasStructure  = false;
+		t->hasAnimation  = false;
 		t->hasExplosion  = false;
-		t->index           = 0;
+		t->index         = 0;
 	}
 
-	for (i = 0; i < 4096; i++) g_mapSpriteID[i] = g_map[i].groundSpriteID;
+	for (i = 0; i < 4096; i++) g_mapTileID[i] = g_map[i].groundTileID;
 }
 
 /**

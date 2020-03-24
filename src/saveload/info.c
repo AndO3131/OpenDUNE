@@ -15,6 +15,7 @@
 #include "../timer.h"
 #include "../unit.h"
 #include "../gui/gui.h"
+#include "../file.h"
 
 static uint32 SaveLoad_SelectionType(void *object, uint32 value, bool loading)
 {
@@ -198,7 +199,7 @@ bool Info_Save(FILE *fp)
 {
 	static uint16 savegameVersion = 0x0290;
 
-	if (fwrite(&savegameVersion, sizeof(uint16), 1, fp) != 1) return false;
+	if (!fwrite_le_uint16(savegameVersion, fp)) return false;
 
 	if (!SaveLoad_Save(s_saveInfo, fp, NULL)) return false;
 

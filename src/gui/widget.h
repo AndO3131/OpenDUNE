@@ -3,6 +3,8 @@
 #ifndef GUI_WIDGET_H
 #define GUI_WIDGET_H
 
+#include "../gfx.h"
+
 /**
  * Types of WidgetClick available in the game.
  */
@@ -52,7 +54,7 @@ struct Widget;
  * The parameter for a given DrawMode.
  */
 typedef union WidgetDrawParameter {
-	uint16 unknown;                                         /*!< Parameter for DRAW_MODE_UNKNOWN3. */
+	uint16 spriteID;                                        /*!< Parameter for DRAW_MODE_UNKNOWN3. */
 	void *sprite;                                           /*!< Parameter for DRAW_MODE_SPRITE. */
 	char *text;                                             /*!< Parameter for DRAW_MODE_TEXT. */
 	void (*proc)(struct Widget *);                          /*!< Parameter for DRAW_MODE_CUSTOM_PROC. */
@@ -71,20 +73,18 @@ typedef struct Widget {
 	uint8  drawModeNormal;                                  /*!< Draw mode when normal. */
 	uint8  drawModeSelected;                                /*!< Draw mode when selected. */
 	uint8  drawModeDown;                                    /*!< Draw mode when down. */
-	union {
-		struct {
-			BIT_U8 requiresClick:1;                         /*!< Requires click. */
-			BIT_U8 notused1:1;
-			BIT_U8 clickAsHover:1;                          /*!< Click as hover. */
-			BIT_U8 invisible:1;                             /*!< Widget is invisible. */
-			BIT_U8 greyWhenInvisible:1;                     /*!< Make the widget grey out when made invisible, instead of making it invisible. */
-			BIT_U8 noClickCascade:1;                        /*!< Don't cascade the click event to any other widgets. */
-			BIT_U8 loseSelect:1;                            /*!< Lose select when leave. */
-			BIT_U8 notused2:1;
-			BIT_U8 buttonFilterLeft:4;                      /*!< Left button filter. */
-			BIT_U8 buttonFilterRight:4;                     /*!< Right button filter. */
-		} s;
-		uint16 all; } flags;                                /*!< General flags of the Widget. */
+	struct {
+		BIT_U8 requiresClick:1;                             /*!< Requires click. */
+		BIT_U8 notused1:1;
+		BIT_U8 clickAsHover:1;                              /*!< Click as hover. */
+		BIT_U8 invisible:1;                                 /*!< Widget is invisible. */
+		BIT_U8 greyWhenInvisible:1;                         /*!< Make the widget grey out when made invisible, instead of making it invisible. */
+		BIT_U8 noClickCascade:1;                            /*!< Don't cascade the click event to any other widgets. */
+		BIT_U8 loseSelect:1;                                /*!< Lose select when leave. */
+		BIT_U8 notused2:1;
+		BIT_U8 buttonFilterLeft:4;                          /*!< Left button filter. */
+		BIT_U8 buttonFilterRight:4;                         /*!< Right button filter. */
+	} flags;                                                /*!< General flags of the Widget. */
 	WidgetDrawParameter drawParameterNormal;                /*!< Draw parameter when normal. */
 	WidgetDrawParameter drawParameterSelected;              /*!< Draw parameter when selected. */
 	WidgetDrawParameter drawParameterDown;                  /*!< Draw parameter when down. */
@@ -93,25 +93,23 @@ typedef struct Widget {
 	 int16 offsetY;                                         /*!< Y position from parent we are at, in pixels. */
 	uint16 width;                                           /*!< Width of widget in pixels. */
 	uint16 height;                                          /*!< Height of widget in pixels. */
-	uint8  fgColourNormal;                                  /*!< Foregroud colour for draw proc when normal. */
+	uint8  fgColourNormal;                                  /*!< Foreground colour for draw proc when normal. */
 	uint8  bgColourNormal;                                  /*!< Background colour for draw proc when normal. */
-	uint8  fgColourSelected;                                /*!< Foregroud colour for draw proc when selected. */
+	uint8  fgColourSelected;                                /*!< Foreground colour for draw proc when selected. */
 	uint8  bgColourSelected;                                /*!< Background colour for draw proc when selected. */
-	uint8  fgColourDown;                                    /*!< Foregroud colour for draw proc when down. */
+	uint8  fgColourDown;                                    /*!< Foreground colour for draw proc when down. */
 	uint8  bgColourDown;                                    /*!< Background colour for draw proc when down. */
-	union {
-		struct {
-			BIT_U8 selected:1;                              /*!< Selected. */
-			BIT_U8 hover1:1;                                /*!< Hover. */
-			BIT_U8 hover2:1;                                /*!< Hover. */
-			BIT_U8 selectedLast:1;                          /*!< Last Selected. */
-			BIT_U8 hover1Last:1;                            /*!< Last Hover. */
-			BIT_U8 hover2Last:1;                            /*!< Last Hover. */
-			BIT_U8 notused:1;
-			BIT_U8 keySelected:1;                           /*!< Key Selected. */
-			BIT_U8 buttonState:8;                           /*!< Button state. */
-		} s;
-		uint16 all; } state;                                /*!< State of the Widget. */
+	struct {
+		BIT_U8 selected:1;                                  /*!< Selected. */
+		BIT_U8 hover1:1;                                    /*!< Hover. */
+		BIT_U8 hover2:1;                                    /*!< Hover. */
+		BIT_U8 selectedLast:1;                              /*!< Last Selected. */
+		BIT_U8 hover1Last:1;                                /*!< Last Hover. */
+		BIT_U8 hover2Last:1;                                /*!< Last Hover. */
+		BIT_U8 notused:1;
+		BIT_U8 keySelected:1;                               /*!< Key Selected. */
+		BIT_U8 buttonState:8;                               /*!< Button state. */
+	} state;                                                /*!< State of the Widget. */
 	ClickProc *clickProc;                                   /*!< Function to execute when widget is pressed. */
 	void *data;                                             /*!< If non-NULL, it points to WidgetScrollbar or HallOfFameData belonging to this widget. */
 	uint16 stringID;                                        /*!< Strings to print on the widget. Index above 0xFFF2 are special. */
@@ -147,8 +145,8 @@ typedef struct WidgetInfo {
 	int16  spriteID;                   /*!< ?? */
 	uint16 offsetX;                    /*!< ?? */
 	uint16 offsetY;                    /*!< ?? */
-	uint16 width;                      /*!< ?? */
-	uint16 height;                     /*!< ?? */
+	uint16 width;                      /*!< only used if spriteID < 0 */
+	uint16 height;                     /*!< only used if spriteID < 0 */
 	uint16 stringID;                   /*!< ?? */
 } WidgetInfo;
 
@@ -182,20 +180,14 @@ typedef struct WidgetProperties {
 	uint8  fgColourSelected;                                /*!< Foreground colour when 'selected' */
 } WidgetProperties;
 
-extern WidgetInfo g_table_gameWidgetInfo[];
-extern WidgetInfo g_table_factoryWidgetInfo[];
+extern WidgetInfo g_table_gameWidgetInfo[19];
+extern WidgetInfo g_table_factoryWidgetInfo[13];
 
 extern WindowDesc g_optionsWindowDesc;
 extern WindowDesc g_gameControlWindowDesc;
 extern WindowDesc g_yesNoWindowDesc;
 extern WindowDesc g_saveLoadWindowDesc;
 extern WindowDesc g_savegameNameWindowDesc;
-
-extern uint8 g_paletteActive[];
-extern uint8 *g_palette1;
-extern uint8 *g_palette2;
-extern uint8 *g_paletteMapping1;
-extern uint8 *g_paletteMapping2;
 
 extern Widget *g_widgetLinkedListHead;
 extern Widget *g_widgetLinkedListTail;
@@ -215,7 +207,7 @@ extern uint16 g_curWidgetHeight;
 extern uint8  g_curWidgetFGColourBlink;
 extern uint8  g_curWidgetFGColourNormal;
 
-extern Widget g_table_windowWidgets[];
+extern Widget g_table_windowWidgets[9];
 
 
 extern Widget *GUI_Widget_GetNext(Widget *w);
@@ -227,7 +219,7 @@ extern void    GUI_Widget_Draw(Widget *w);
 extern uint8   GUI_Widget_GetShortcut(uint8 c);
 extern Widget *GUI_Widget_Allocate(uint16 index, uint16 shortcut, uint16 offsetX, uint16 offsetY, uint16 spriteID, uint16 stringID);
 extern Widget *GUI_Widget_Allocate_WithScrollbar(uint16 index, uint16 parentID, uint16 offsetX, uint16 offsetY, int16 width, int16 height, ScrollbarDrawProc *drawProc);
-extern Widget *GUI_Widget_Allocate3(uint16 index, uint16 parentID, uint16 offsetX, uint16 offsetY, void *sprite1, void *sprite2, Widget *widget2, uint16 unknown1A);
+extern Widget *GUI_Widget_AllocateScrollBtn(uint16 index, uint16 parentID, uint16 offsetX, uint16 offsetY, void *sprite1, void *sprite2, Widget *widget2, bool isDown);
 extern void    GUI_Widget_MakeNormal(Widget *w, bool clickProc);
 extern void    GUI_Widget_MakeSelected(Widget *w, bool clickProc);
 extern Widget *GUI_Widget_Link(Widget *w1, Widget *w2);
@@ -242,9 +234,9 @@ extern void Widget_PaintCurrentWidget(void);
 
 /* viewport.c */
 extern bool GUI_Widget_Viewport_Click(Widget *w);
-extern void GUI_Widget_Viewport_Draw(bool arg06, bool arg08, bool drawToMainScreen);
-extern void GUI_Widget_Viewport_DrawTile(uint16 packed);
-extern void GUI_Widget_Viewport_RedrawMap(uint16 screenID);
+extern void GUI_Widget_Viewport_Draw(bool forceRedraw, bool hasScrolled, bool drawToMainScreen);
+extern bool GUI_Widget_Viewport_DrawTile(uint16 packed);
+extern void GUI_Widget_Viewport_RedrawMap(Screen screenID);
 
 /* widget_click.c */
 extern bool GUI_Widget_SpriteTextButton_Click(Widget *w);

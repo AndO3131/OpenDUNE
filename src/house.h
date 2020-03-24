@@ -27,14 +27,16 @@ typedef enum HouseFlag {
 	FLAG_HOUSE_ORDOS        = 1 << HOUSE_ORDOS,     /* 0x04 */
 	FLAG_HOUSE_FREMEN       = 1 << HOUSE_FREMEN,    /* 0x08 */
 	FLAG_HOUSE_SARDAUKAR    = 1 << HOUSE_SARDAUKAR, /* 0x10 */
-	FLAG_HOUSE_MERCENARY    = 1 << HOUSE_MERCENARY  /* 0x20 */
+	FLAG_HOUSE_MERCENARY    = 1 << HOUSE_MERCENARY, /* 0x20 */
+
+	FLAG_HOUSE_ALL          = FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN
 } HouseFlag;
 
 /**
  * Types of special %House Weapons available in the game.
  */
 typedef enum HouseWeapon {
-	HOUSE_WEAPON_MISSLE   = 1,
+	HOUSE_WEAPON_MISSILE  = 1,
 	HOUSE_WEAPON_FREMEN   = 2,
 	HOUSE_WEAPON_SABOTEUR = 3,
 
@@ -51,8 +53,22 @@ typedef enum HouseAnimationType {
 	HOUSEANIMATION_LEVEL8_ORDOS     = 6,
 	HOUSEANIMATION_LEVEL9_HARKONNEN = 7,
 	HOUSEANIMATION_LEVEL9_ARTREIDES = 8,
-	HOUSEANIMATION_LEVEL9_ORDOS     = 9
+	HOUSEANIMATION_LEVEL9_ORDOS     = 9,
+
+	HOUSEANIMATION_MAX              = 10
 } HouseAnimationType;
+
+/**
+ * Flags for House structure
+ */
+typedef struct {
+	BIT_U8 used:1;                                      /*!< The House is in use (no longer free in the pool). */
+	BIT_U8 human:1;                                     /*!< The House is controlled by a human. */
+	BIT_U8 doneFullScaleAttack:1;                       /*!< The House did his one time attack the human with everything we have. */
+	BIT_U8 isAIActive:1;                                /*!< The House has been seen by the human, and everything now becomes active (Team attack, house missiles, rebuilding, ..). */
+	BIT_U8 radarActivated:1;                            /*!< The radar is activated. */
+	BIT_U8 unused_0020:3;                               /*!< Unused */
+} HouseFlags;
 
 /**
  * A %House as stored in the memory.
@@ -60,18 +76,11 @@ typedef enum HouseAnimationType {
 typedef struct House {
 	uint8  index;                                           /*!< The index of the House in the array. */
 	uint16 harvestersIncoming;                              /*!< How many harvesters are waiting to be delivered. Only happens when we run out of Units to do it immediately. */
-	struct {
-		BIT_U8 used:1;                                      /*!< The House is in use (no longer free in the pool). */
-		BIT_U8 human:1;                                     /*!< The House is controlled by a human. */
-		BIT_U8 doneFullScaleAttack:1;                       /*!< The House did his one time attack the human with everything we have. */
-		BIT_U8 isAIActive:1;                                /*!< The House has been seen by the human, and everything now becomes active (Team attack, house missiles, rebuilding, ..). */
-		BIT_U8 radarActivated:1;                            /*!< The radar is activated. */
-		BIT_U8 unused_0020:3;                               /*!< Unused */
-	} flags;                                                /*!< General flags of the House. */
+	HouseFlags flags;                                       /*!< General flags of the House. */
 	uint16 unitCount;                                       /*!< Amount of units owned by House. */
 	uint16 unitCountMax;                                    /*!< Maximum amount of units this House is allowed to have. */
-	uint16 unitCountEnemy;                                  /*!< Amount of units owned by allies. */
-	uint16 unitCountAllied;                                 /*!< Amount of units owned by enemy. */
+	uint16 unitCountEnemy;                                  /*!< Amount of units owned by enemy. */
+	uint16 unitCountAllied;                                 /*!< Amount of units owned by allies. */
 	uint32 structuresBuilt;                                 /*!< The Nth bit active means the Nth structure type is built (one or more). */
 	uint16 credits;                                         /*!< Amount of credits the House currently has. */
 	uint16 creditsStorage;                                  /*!< Amount of credits the House can store. */
@@ -108,12 +117,28 @@ typedef struct HouseInfo {
 } HouseInfo;
 
 /**
+ * HouseAnimation flags
+ * see GameLoop_PlayAnimation()
+ */
+#define HOUSEANIM_FLAGS_MODE0  0	/* no WSA, only text or voice */
+#define HOUSEANIM_FLAGS_MODE1  1	/* WSA Looping */
+#define HOUSEANIM_FLAGS_MODE2  2	/* WSA display from first to end frame*/
+#define HOUSEANIM_FLAGS_MODE3  3	/* display WSA unique frame (frameCount field) */
+#define HOUSEANIM_FLAGS_FADEINTEXT   0x04	/* fade in text at the beginning */
+#define HOUSEANIM_FLAGS_FADEOUTTEXT  0x08	/* fade out text at the end */
+#define HOUSEANIM_FLAGS_FADETOWHITE  0x10	/* Fade palette to all while at the end */
+#define HOUSEANIM_FLAGS_POS0_0       0x20	/* Position (0,0) - default is (8,24) */
+#define HOUSEANIM_FLAGS_DISPLAYFRAME 0x40	/* force display in frame buffer (not screen) */
+#define HOUSEANIM_FLAGS_FADEIN2      0x80	/*  */
+#define HOUSEANIM_FLAGS_FADEIN      0x400	/*  */
+
+/**
  * The information for a single animation frame in House Animation. It is part
  *  of an array that stops when duration is 0.
  */
 typedef struct HouseAnimation_Animation {
-	const char *string;                                     /*!< Name of the WSA for this animation. */
-	uint8  duration;                                        /*!< Duration of this animation. */
+	const char string[8];                                   /*!< Name of the WSA for this animation. */
+	uint8  duration;                                        /*!< Duration of this animation (in 1/10th sec). */
 	uint8  frameCount;                                      /*!< Amount of frames in this animation. */
 	uint16 flags;                                           /*!< Flags of the animation. */
 } HouseAnimation_Animation;
@@ -143,10 +168,10 @@ typedef struct HouseAnimation_SoundEffect {
 	uint8  wait;                                            /*!< How long to wait before we play this SoundEffect. */
 } HouseAnimation_SoundEffect;
 
-extern const HouseInfo g_table_houseInfo[];
-extern const HouseAnimation_Animation g_table_houseAnimation_animation[][32];
-extern const HouseAnimation_Subtitle g_table_houseAnimation_subtitle[][32];
-extern const HouseAnimation_SoundEffect g_table_houseAnimation_soundEffect[][90];
+extern const HouseInfo g_table_houseInfo[HOUSE_MAX];
+extern const HouseAnimation_Animation g_table_houseAnimation_animation[HOUSEANIMATION_MAX][32];
+extern const HouseAnimation_Subtitle g_table_houseAnimation_subtitle[HOUSEANIMATION_MAX][32];
+extern const HouseAnimation_SoundEffect g_table_houseAnimation_soundEffect[HOUSEANIMATION_MAX][90];
 
 extern House *g_playerHouse;
 extern HouseType g_playerHouseID;
@@ -157,7 +182,6 @@ extern uint32 g_tickHousePowerMaintenance;
 
 extern void GameLoop_House(void);
 extern uint8 House_StringToType(const char *name);
-extern void House_EnsureHarvesterAvailable(uint8 houseID);
 extern bool House_AreAllied(uint8 houseID1, uint8 houseID2);
 extern bool House_UpdateRadarState(House *h);
 extern void House_UpdateCreditsStorage(uint8 houseID);

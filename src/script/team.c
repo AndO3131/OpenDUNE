@@ -153,15 +153,15 @@ uint16 Script_Team_GetAverageDistance(ScriptEngine *script)
 		if (u == NULL) break;
 		if (t->index != u->team - 1) continue;
 		count++;
-		averageX += u->o.position.d.px;
-		averageY += u->o.position.d.py;
+		averageX += (u->o.position.x >> 8) & 0x3f;
+		averageY += (u->o.position.y >> 8) & 0x3f;
 	}
 
 	if (count == 0) return 0;
 	averageX /= count;
 	averageY /= count;
 
-	t->position = Tile_MakeXY(averageX, averageY);
+	Tile_MakeXY(t->position, averageX, averageY);
 
 	find.houseID = t->houseID;
 	find.index   = 0xFFFF;

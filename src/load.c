@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "multichar.h"
 #include "types.h"
 #include "os/endian.h"
 #include "os/strings.h"
@@ -9,6 +10,7 @@
 #include "load.h"
 
 #include "audio/sound.h"
+#include "config.h"
 #include "file.h"
 #include "gui/gui.h"
 #include "gui/widget.h"
@@ -51,7 +53,7 @@ static bool Load_Main(FILE *fp)
 
 	/* All OpenDUNE / Dune2 savegames should start with 'FORM' */
 	if (fread(&header, sizeof(uint32), 1, fp) != 1) return false;
-	if (BETOH32(header) != 'FORM') {
+	if (BETOH32(header) != CC_FORM) {
 		Error("Invalid magic header in savegame. Not an OpenDUNE / Dune2 savegame.");
 		return false;
 	}
@@ -61,17 +63,17 @@ static bool Load_Main(FILE *fp)
 
 	/* The next 'chunk' is fake, and has no length field */
 	if (fread(&header, sizeof(uint32), 1, fp) != 1) return false;
-	if (BETOH32(header) != 'SCEN') return false;
+	if (BETOH32(header) != CC_SCEN) return false;
 
 	position = ftell(fp);
 
 	/* Find the 'INFO' chunk, as it contains the savegame version */
 	version = 0;
-	length = Load_FindChunk(fp, 'INFO');
+	length = Load_FindChunk(fp, CC_INFO);
 	if (length == 0) return false;
 
 	/* Read the savegame version */
-	if (fread(&version, sizeof(uint16), 1, fp) != 1) return false;
+	if (!fread_le_uint16(&version, fp)) return false;
 	length -= 2;
 	if (version == 0) return false;
 
@@ -83,7 +85,7 @@ static bool Load_Main(FILE *fp)
 
 		/* Find the 'PLYR' chunk */
 		fseek(fp, position, SEEK_SET);
-		length = Load_FindChunk(fp, 'PLYR');
+		length = Load_FindChunk(fp, CC_PLYR);
 		if (length == 0) return false;
 
 		/* Find the human player */
@@ -104,14 +106,14 @@ static bool Load_Main(FILE *fp)
 		length = BETOH32(length);
 
 		switch (BETOH32(header)) {
-			case 'NAME': break; /* 'NAME' chunk is of no interest to us */
-			case 'INFO': break; /* 'INFO' chunk is already read */
-			case 'MAP ': if (!Map_Load      (fp, length)) return false; break;
-			case 'PLYR': if (!House_Load    (fp, length)) return false; break;
-			case 'UNIT': if (!Unit_Load     (fp, length)) return false; break;
-			case 'BLDG': if (!Structure_Load(fp, length)) return false; break;
-			case 'TEAM': if (!Team_Load     (fp, length)) return false; break;
-			case 'ODUN': if (!UnitNew_Load  (fp, length)) return false; break;
+			case CC_NAME: break; /* 'NAME' chunk is of no interest to us */
+			case CC_INFO: break; /* 'INFO' chunk is already read */
+			case CC_MAP : if (!Map_Load      (fp, length)) return false; break;
+			case CC_PLYR: if (!House_Load    (fp, length)) return false; break;
+			case CC_UNIT: if (!Unit_Load     (fp, length)) return false; break;
+			case CC_BLDG: if (!Structure_Load(fp, length)) return false; break;
+			case CC_TEAM: if (!Team_Load     (fp, length)) return false; break;
+			case CC_ODUN: if (!UnitNew_Load  (fp, length)) return false; break;
 
 			default:
 				Error("Unknown chunk in savegame: %c%c%c%c (length: %d). Skipped.\n", header, header >> 8, header >> 16, header >> 24, length);
@@ -126,24 +128,18 @@ static bool Load_Main(FILE *fp)
 	return true;
 }
 
-bool LoadFile(char *filename)
+bool SaveGame_LoadFile(char *filename)
 {
 	FILE *fp;
-	char filenameComplete[1024];
 	bool res;
 
 	Sound_Output_Feedback(0xFFFE);
 
 	Game_Init();
 
-	snprintf(filenameComplete, sizeof(filenameComplete), "data/%s", filename);
-	fp = fopen(filenameComplete, "rb");
+	fp = fopendatadir(SEARCHDIR_PERSONAL_DATA_DIR, filename, "rb");
 	if (fp == NULL) {
-		Error("Failed to open file '%s' for reading.\n", filenameComplete);
-
-		/* TODO -- Load failures should not result in termination */
-		exit(0);
-
+		Error("Failed to open file '%s' for reading.\n", filename);
 		return false;
 	}
 
@@ -156,11 +152,7 @@ bool LoadFile(char *filename)
 	fclose(fp);
 
 	if (!res) {
-		Error("Error while loading savegame.\n");
-
-		/* TODO -- Load failures should not result in termination */
-		exit(0);
-
+		Error("Error while loading savegame '%s'.\n", filename);
 		return false;
 	}
 

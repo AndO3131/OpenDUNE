@@ -261,7 +261,7 @@ uint16 Script_Unit_Pickup(ScriptEngine *script)
 			if (s->o.linkedID == 0xFF) Structure_SetState(s, STRUCTURE_STATE_IDLE);
 
 			/* Check if the unit has a return-to position or try to find spice in case of a harvester */
-			if (u2->targetLast.tile != 0) {
+			if (u2->targetLast.x != 0 || u2->targetLast.y != 0) {
 				u->targetMove = Tools_Index_Encode(Tile_PackTile(u2->targetLast), IT_TILE);
 			} else if (u2->o.type == UNIT_HARVESTER && Unit_GetHouseID(u2) != g_playerHouseID) {
 				u->targetMove = Tools_Index_Encode(Map_SearchSpice(Tile_PackTile(u->o.position), 20), IT_TILE);
@@ -334,8 +334,10 @@ uint16 Script_Unit_Pickup(ScriptEngine *script)
 
 			/* Check if we want to return to this spice field later */
 			if (Map_SearchSpice(Tile_PackTile(u2->o.position), 2) == 0) {
-				u2->targetPreLast.tile = 0;
-				u2->targetLast.tile    = 0;
+				u2->targetPreLast.x = 0;
+				u2->targetPreLast.y = 0;
+				u2->targetLast.x    = 0;
+				u2->targetLast.y    = 0;
 			}
 
 			return 0;
@@ -382,9 +384,8 @@ uint16 Script_Unit_SetSpeed(ScriptEngine *script)
 	uint16 speed;
 
 	u = g_scriptCurrentUnit;
-	speed = STACK_PEEK(1);
+	speed = clamp(STACK_PEEK(1), 0, 255);
 
-	/* Scenario-based units move on a different speed */
 	if (!u->o.flags.s.byScenario) speed = speed * 192 / 256;
 
 	Unit_SetSpeed(u, speed);
@@ -443,8 +444,8 @@ uint16 Script_Unit_MoveToTarget(ScriptEngine *script)
 	if ((int16)distance < 128) {
 		Unit_SetSpeed(u, 0);
 
-		u->o.position.s.x += clamp((int16)(tile.s.x - u->o.position.s.x), -16, 16);
-		u->o.position.s.y += clamp((int16)(tile.s.y - u->o.position.s.y), -16, 16);
+		u->o.position.x += clamp((int16)(tile.x - u->o.position.x), -16, 16);
+		u->o.position.y += clamp((int16)(tile.y - u->o.position.y), -16, 16);
 
 		Unit_UpdateMap(2, u);
 
@@ -461,8 +462,9 @@ uint16 Script_Unit_MoveToTarget(ScriptEngine *script)
 	Unit_SetOrientation(u, orientation, false, 0);
 
 	diff = abs(orientation - u->orientation[0].current);
+	if (diff > 128) diff = 256 - diff;
 
-	Unit_SetSpeed(u, max(min(distance / 8, 255), 25) * (255 - diff) / 256);
+	Unit_SetSpeed(u, (max(min(distance / 8, 255), 25) * (255 - diff) + 128) / 256);
 
 	delay = max((int16)distance / 1024, 1);
 
@@ -735,7 +737,7 @@ uint16 Script_Unit_Rotate(ScriptEngine *script)
 	u = g_scriptCurrentUnit;
 	ui = &g_table_unitInfo[u->o.type];
 
-	if (ui->movementType != MOVEMENT_WINGER && u->currentDestination.tile != 0) return 1;
+	if (ui->movementType != MOVEMENT_WINGER && (u->currentDestination.x != 0 || u->currentDestination.y != 0)) return 1;
 
 	index = ui->o.flags.hasTurret ? 1 : 0;
 
@@ -924,7 +926,7 @@ uint16 Script_Unit_SetDestinationDirect(ScriptEngine *script)
 
 	u = g_scriptCurrentUnit;
 
-	if (u->currentDestination.tile == 0 || g_table_unitInfo[u->o.type].flags.isNormalUnit) {
+	if ((u->currentDestination.x == 0 && u->currentDestination.y == 0) || g_table_unitInfo[u->o.type].flags.isNormalUnit) {
 		u->currentDestination = Tools_Index_GetTile(encoded);
 	}
 
@@ -963,7 +965,7 @@ uint16 Script_Unit_GetInfo(ScriptEngine *script)
 		case 0x08: return Tools_Index_Encode(u->o.index, IT_UNIT);
 		case 0x09: return u->movingSpeed;
 		case 0x0A: return abs(u->orientation[0].target - u->orientation[0].current);
-		case 0x0B: return u->currentDestination.tile == 0 ? 0 : 1;
+		case 0x0B: return (u->currentDestination.x == 0 && u->currentDestination.y == 0) ? 0 : 1;
 		case 0x0C: return u->fireDelay == 0 ? 1 : 0;
 		case 0x0D: return ui->flags.explodeOnDeath;
 		case 0x0E: return Unit_GetHouseID(u);
@@ -983,7 +985,7 @@ uint16 Script_Unit_GetInfo(ScriptEngine *script)
  * @param direction The direction we move on this tile.
  * @return 256 if tile is not accessable, or a score for entering otherwise.
  */
-static int16 Script_Unit_Pathfind_GetScore(uint16 packed, uint8 direction)
+static int16 Script_Unit_Pathfind_GetScore(uint16 packed, uint8 orient8)
 {
 	int16 res;
 	Unit *u;
@@ -992,7 +994,11 @@ static int16 Script_Unit_Pathfind_GetScore(uint16 packed, uint8 direction)
 
 	u = g_scriptCurrentUnit;
 
-	res = Unit_GetTileEnterScore(u, packed, direction << 5);
+	if (g_dune2_enhanced) {
+		res = Unit_GetTileEnterScore(u, packed, orient8);
+	} else {
+		res = Unit_GetTileEnterScore(u, packed, orient8 << 5);
+	}
 
 	if (res == -1) res = 256;
 
@@ -1297,7 +1303,7 @@ uint16 Script_Unit_CalculateRoute(ScriptEngine *script)
 	u = g_scriptCurrentUnit;
 	encoded = STACK_PEEK(1);
 
-	if (u->currentDestination.tile != 0 || !Tools_Index_IsValid(encoded)) return 1;
+	if (u->currentDestination.x != 0 || u->currentDestination.y != 0 || !Tools_Index_IsValid(encoded)) return 1;
 
 	packedSrc = Tile_PackTile(u->o.position);
 	packedDst = Tools_Index_GetPackedTile(encoded);
@@ -1473,7 +1479,7 @@ uint16 Script_Unit_StartAnimation(ScriptEngine *script)
 	g_map[position].houseID = Unit_GetHouseID(u);
 
 	assert(animationUnitID < 4);
-	if (g_table_unitInfo[u->o.type].displayMode == 3) {
+	if (g_table_unitInfo[u->o.type].displayMode == DISPLAYMODE_INFANTRY_3_FRAMES) {
 		Animation_Start(g_table_animation_unitScript1[animationUnitID], u->o.position, 0, Unit_GetHouseID(u), 4);
 	} else {
 		Animation_Start(g_table_animation_unitScript2[animationUnitID], u->o.position, 0, Unit_GetHouseID(u), 4);
@@ -1691,7 +1697,8 @@ uint16 Script_Unit_IsValidDestination(ScriptEngine *script)
 			u2 = Unit_Get_ByIndex(u->o.linkedID);
 			u2->o.position = Tools_Index_GetTile(encoded);
 			if (!Unit_IsTileOccupied(u2)) return 0;
-			u2->o.position.tile = 0xFFFFFFFF;
+			u2->o.position.x = 0xFFFF;
+			u2->o.position.y = 0xFFFF;
 			return 1;
 
 		case IT_STRUCTURE: {
@@ -1837,7 +1844,7 @@ uint16 Script_Unit_MCVDeploy(ScriptEngine *script)
 	Unit_UpdateMap(0, u);
 
 	for (i = 0; i < 4; i++) {
-		static int8 offsets[4] = { 0, -1, -64, -65 };
+		static const int8 offsets[4] = { 0, -1, -64, -65 };
 
 		s = Structure_Create(STRUCTURE_INDEX_INVALID, STRUCTURE_CONSTRUCTION_YARD, Unit_GetHouseID(u), Tile_PackTile(u->o.position) + offsets[i]);
 

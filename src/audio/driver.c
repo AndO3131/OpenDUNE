@@ -6,6 +6,7 @@
 #include "types.h"
 #include "../os/math.h"
 #include "../os/strings.h"
+#include "../os/error.h"
 
 #include "driver.h"
 
@@ -14,6 +15,7 @@
 #include "../config.h"
 #include "../file.h"
 #include "../timer.h"
+#include "../inifile.h"
 
 static bool s_driverInstalled[16];
 static bool s_driverLoaded[16];
@@ -85,7 +87,7 @@ static bool Drivers_Init(Driver *driver, const char *extension)
 
 	Driver_Init(driver->index);
 
-	memcpy(driver->extension, extension, 4);
+	strncpy(driver->extension, extension, 4);
 
 	return true;
 }
@@ -107,10 +109,18 @@ static bool Drivers_SoundMusic_Init(bool enable)
 
 	if (!MPU_Init()) return false;
 
-	if (!Drivers_Init(sound, "C55")) return false;
+#ifdef MUNT
+	if (!Drivers_Init(sound, (IniFile_GetInteger("mt32midi", 1) != 0) ? "XMI" : "C55")) return false;
+#else
+	if (!Drivers_Init(sound, (IniFile_GetInteger("mt32midi", 0) != 0) ? "XMI" : "C55")) return false;
+#endif
 	memcpy(music, sound, sizeof(Driver));
 
-	Timer_Add(MPU_Interrupt, 1000000 / 120);
+#if defined(_WIN32)
+	MPU_StartThread(1000000 / 120);
+#else
+	Timer_Add(MPU_Interrupt, 1000000 / 120, false);
+#endif
 
 	size = MPU_GetDataSize();
 
@@ -236,34 +246,33 @@ void Driver_Voice_LoadFile(const char *filename, void *buffer, uint32 length)
 
 	if (filename == NULL) return;
 	if (g_driverVoice->index == 0xFFFF) return;
-	if (!File_Exists(filename)) return;
 
 	File_ReadBlockFile(filename, buffer, length);
 }
 
-void Driver_Voice_Play(const uint8 *data, int16 arg0A)
+void Driver_Voice_Play(const uint8 *data, int16 priority)
 {
-	static int16 l_var_639A = -1;
+	static int16 l_currentPriority = -1;	/* priority of sound currently playing */
 
 	Driver *voice = g_driverVoice;
 
 	if (!g_gameConfig.sounds || voice->index == 0xFFFF) return;
 
 	if (data == NULL) {
-		arg0A = 0x100;
-	} else {
-		arg0A = min(arg0A, 0xFF);
+		priority = 0x100;
+	} else if (priority >= 0x100) {
+		priority = 0xFF;
 	}
 
-	if (!Driver_Voice_IsPlaying()) l_var_639A = -1;
+	if (!Driver_Voice_IsPlaying()) l_currentPriority = -1;
 
-	if (arg0A < l_var_639A) return;
+	if (priority < l_currentPriority) return;
 
 	Driver_Voice_Stop();
 
 	if (data == NULL) return;
 
-	l_var_639A = arg0A;
+	l_currentPriority = priority;
 
 	if (data == NULL) return;
 
@@ -295,20 +304,20 @@ void Driver_Sound_LoadFile(const char *musicName)
 
 	if (sound->content == music->content) {
 		sound->content         = NULL;
-		sound->filename        = NULL;
+		sound->filename[0]     = '\0';
 		sound->contentMalloced = false;
 	} else {
 		Driver_UnloadFile(sound);
 	}
 
-	if (music->filename != NULL) {
+	if (music->filename[0] != '\0') {
 		char *filename;
 
 		filename = Drivers_GenerateFilename(musicName, sound);
 
-		if (strcasecmp(filename, music->filename) == 0) {
+		if (filename != NULL && strcasecmp(filename, music->filename) == 0) {
 			sound->content         = music->content;
-			sound->filename        = music->filename;
+			memcpy(sound->filename, music->filename, sizeof(music->filename));
 			sound->contentMalloced = music->contentMalloced;
 			return;
 		}
@@ -319,22 +328,23 @@ void Driver_Sound_LoadFile(const char *musicName)
 
 char *Drivers_GenerateFilename(const char *name, Driver *driver)
 {
+	char basefilename[14];
 	static char filename[14];
 
 	if (name == NULL || driver == NULL || driver->index == 0xFFFF) return NULL;
 
-	strcpy(filename, name);
-	if (strrchr(filename, '.') != NULL) *strrchr(filename, '.') = '\0';
-	strcat(filename, ".");
-	strcat(filename, driver->extension);
+	strncpy(basefilename, name, sizeof(basefilename));
+	basefilename[sizeof(basefilename) - 1] = '\0';
+	/* Remove extension if there is one */
+	if (strrchr(basefilename, '.') != NULL) *strrchr(basefilename, '.') = '\0';
+
+	snprintf(filename, sizeof(filename), "%s.%s", basefilename, driver->extension);
 
 	if (File_Exists(filename)) return filename;
 
 	if (driver->index == 0xFFFF) return NULL;
 
-	strcpy(filename, name);
-	if (strrchr(filename, '.') != NULL) *strrchr(filename, '.') = '\0';
-	strcat(filename, ".XMI");
+	snprintf(filename, sizeof(filename), "%s.XMI", basefilename);
 
 	if (File_Exists(filename)) return filename;
 
@@ -346,31 +356,37 @@ static void Drivers_SoundMusic_Uninit(void)
 	Driver *sound = g_driverSound;
 	Driver *music = g_driverMusic;
 
-	if (music->index != 0xFFFF) {
-		MSBuffer *buffer = g_bufferMusic;
+	if (g_enableSoundMusic) {
+		uint8 i;
+		MSBuffer *buffer = NULL;
 
+		for (i = 0; i < 4; i++) {
+			buffer = g_bufferSound[i];
+			if (buffer->index != 0xFFFF) {
+				MPU_Stop(buffer->index);
+				MPU_ClearData(buffer->index);
+				buffer->index = 0xFFFF;
+			}
+		}
+
+		buffer = g_bufferMusic;
 		if (buffer->index != 0xFFFF) {
 			MPU_Stop(buffer->index);
 			MPU_ClearData(buffer->index);
 			buffer->index = 0xFFFF;
 		}
 
+#if defined(_WIN32)
+		MPU_StopThread();
+#else
+		Timer_Remove(MPU_Interrupt);
+#endif
+
 		free(buffer->buffer);
 		buffer->buffer = NULL;
-	}
-
-	if (sound->index != 0xFFFF) {
-		uint8 i;
 
 		for (i = 0; i < 4; i++) {
-			MSBuffer *buffer = g_bufferSound[i];
-
-			if (buffer->index != 0xFFFF) {
-				MPU_Stop(buffer->index);
-				MPU_ClearData(buffer->index);
-				buffer->index = 0xFFFF;
-			}
-
+			buffer = g_bufferSound[i];
 			free(buffer->buffer);
 			buffer->buffer = NULL;
 		}
@@ -383,7 +399,6 @@ static void Drivers_SoundMusic_Uninit(void)
 	Drivers_Uninit(sound);
 	memcpy(music, sound, sizeof(Driver));
 
-	Timer_Remove(MPU_Interrupt);
 	MPU_Uninit();
 }
 
@@ -403,6 +418,7 @@ void Drivers_All_Uninit(void)
 void Driver_LoadFile(const char *musicName, Driver *driver)
 {
 	char *filename;
+	size_t len;
 
 	filename = Drivers_GenerateFilename(musicName, driver);
 
@@ -410,11 +426,14 @@ void Driver_LoadFile(const char *musicName, Driver *driver)
 
 	Driver_UnloadFile(driver);
 
-	driver->filename = malloc(strlen(filename) + 1);
-	strcpy(driver->filename, filename);
+	/* String length including terminating \0 */
+	len = strlen(filename) + 1;
+	assert(len <= sizeof(driver->filename));
+	memcpy(driver->filename, filename, len);
 
 	driver->content = File_ReadWholeFile(filename);
 	driver->contentMalloced = true;
+	Debug("Driver_LoadFile(%s, %p): %s loaded\n", musicName, driver, filename);
 }
 
 void Driver_UnloadFile(Driver *driver)
@@ -423,9 +442,7 @@ void Driver_UnloadFile(Driver *driver)
 		free(driver->content);
 	}
 
-	free(driver->filename);
-
-	driver->filename        = NULL;
+	driver->filename[0]     = '\0';
 	driver->content         = NULL;
 	driver->contentMalloced = false;
 }

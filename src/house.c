@@ -43,6 +43,8 @@ static uint32 s_tickHouseReinforcement = 0;
 static uint32 s_tickHouseMissileCountdown = 0;
 static uint32 s_tickHouseStarportAvailability = 0;
 
+static void House_EnsureHarvesterAvailable(uint8 houseID);
+
 /**
  * Loop over all houses, preforming various of tasks.
  */
@@ -156,7 +158,8 @@ void GameLoop_House(void)
 
 			if (deployed && g_scenario.reinforcement[i].repeat != 0) {
 				tile32 tile;
-				tile.tile = 0xFFFFFFFF;
+				tile.x = 0xFFFF;
+				tile.y = 0xFFFF;
 
 				g_validateStrictIfZero++;
 				u = Unit_Create(UNIT_INDEX_INVALID, u->o.type, u->o.houseID, tile, 0);
@@ -211,7 +214,7 @@ void GameLoop_House(void)
 			}
 		}
 
-		if (tickHouse) House_EnsureHarvesterAvailable((uint8)h->index);
+		if (tickHouse) House_EnsureHarvesterAvailable(h->index);
 
 		if (tickStarport && h->starportLinkedID != UNIT_INDEX_INVALID) {
 			Unit *u = NULL;
@@ -225,14 +228,6 @@ void GameLoop_House(void)
 				s = Structure_Get_ByIndex(g_structureIndex);
 				if (s->o.type == STRUCTURE_STARPORT && s->o.houseID == h->index) {
 					u = Unit_CreateWrapper((uint8)h->index, UNIT_FRIGATE, Tools_Index_Encode(s->o.index, IT_STRUCTURE));
-
-					if (u != NULL) {
-						u->o.linkedID = (uint8)h->starportLinkedID;
-						h->starportLinkedID = UNIT_INDEX_INVALID;
-						u->o.flags.s.inTransport = true;
-
-						Sound_Output_Feedback(38);
-					}
 				} else {
 					PoolFindStruct find2;
 
@@ -246,15 +241,16 @@ void GameLoop_House(void)
 						if (s->o.linkedID != 0xFF) continue;
 
 						u = Unit_CreateWrapper((uint8)h->index, UNIT_FRIGATE, Tools_Index_Encode(s->o.index, IT_STRUCTURE));
-
-						if (u != NULL) {
-							u->o.linkedID = (uint8)h->starportLinkedID;
-							h->starportLinkedID = 0xFFFF;
-							u->o.flags.s.inTransport = true;
-
-							Sound_Output_Feedback(38);
-						}
+						break;
 					}
+				}
+
+				if (u != NULL) {
+					u->o.linkedID = (uint8)h->starportLinkedID;
+					h->starportLinkedID = UNIT_INDEX_INVALID;
+					u->o.flags.s.inTransport = true;
+
+					Sound_Output_Feedback(38);
 				}
 
 				h->starportTimeLeft = (u != NULL) ? g_table_houseInfo[h->index].starportDeliveryTime : 1;
@@ -299,7 +295,7 @@ uint8 House_StringToType(const char *name)
  *
  * @param houseID The index of the house to give a harvester to.
  */
-void House_EnsureHarvesterAvailable(uint8 houseID)
+static void House_EnsureHarvesterAvailable(uint8 houseID)
 {
 	PoolFindStruct find;
 	Structure *s;
@@ -425,7 +421,7 @@ bool House_UpdateRadarState(House *h)
 
 	GUI_Mouse_Show_Safe();
 
-	GUI_Widget_Viewport_RedrawMap(0);
+	GUI_Widget_Viewport_RedrawMap(SCREEN_0);
 
 	return activate;
 }

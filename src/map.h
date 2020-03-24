@@ -29,8 +29,8 @@ MSVC_PACKED_BEGIN
  * A Tile as stored in the memory in the map.
  */
 typedef struct Tile {
-	/* 0000 01FF */ PACK uint32 groundSpriteID:9;           /*!< The Sprite which is drawn on this Tile. */
-	/* 0000 FE00 */ PACK uint32 overlaySpriteID:7;          /*!< The Overlay which is drawn over this Tile. */
+	/* 0000 01FF */ PACK uint32 groundTileID:9;             /*!< The "Icon" which is drawn on this Tile. */
+	/* 0000 FE00 */ PACK uint32 overlayTileID:7;            /*!< The Overlay which is drawn over this Tile. */
 	/* 0007 0000 */ PACK uint32 houseID:3;                  /*!< Which House owns this Tile. */
 	/* 0008 0000 */ PACK uint32 isUnveiled:1;               /*!< There is no fog on the Tile. */
 	/* 0010 0000 */ PACK uint32 hasUnit:1;                  /*!< There is a Unit on the Tile. */
@@ -67,8 +67,8 @@ typedef struct LandscapeInfo {
 
 struct Unit;
 
-extern uint16 g_mapSpriteID[];
-extern Tile g_map[];
+extern uint16 g_mapTileID[64 * 64];
+extern Tile g_map[64 * 64];
 extern uint8 g_functions[3][3];
 
 extern uint8 g_dirtyMinimap[512];
@@ -81,10 +81,11 @@ extern uint16 g_changedTiles[200];
 extern uint8 g_changedTilesMap[512];
 
 extern const MapInfo g_mapInfos[3];
-extern const tile32 g_table_tilediff[][8];
+extern const int16 g_table_mapDiff[4];
+extern const tile32 g_table_tilediff[34][8];
 
 extern uint16 g_dirtyViewportCount;
-extern uint16 g_var_3A08;
+extern bool g_selectionRectangleNeedRepaint;
 
 extern const LandscapeInfo g_table_landscapeInfo[LST_MAX];
 
@@ -94,8 +95,6 @@ extern uint16 Map_SetSelectionSize(uint16 layout);
 extern uint16 Map_SetSelectionObjectPosition(uint16 packed);
 extern void Map_UpdateMinimapPosition(uint16 packed, bool forceUpdate);
 extern bool Map_IsValidPosition(uint16 position);
-extern bool Map_Save(FILE *fp);
-extern bool Map_Load(FILE *fp, uint32 length);
 extern bool Map_IsPositionUnveiled(uint16 position);
 extern bool Map_IsPositionInViewport(tile32 position, uint16 *retX, uint16 *retY);
 extern void Map_MakeExplosion(uint16 type, tile32 position, uint16 hitpoints, uint16 unitOriginEncoded);
@@ -108,9 +107,9 @@ extern void Map_ChangeSpiceAmount(uint16 packed, int16 dir);
 extern void Map_SetViewportPosition(uint16 packed);
 extern void Map_Bloom_ExplodeSpecial(uint16 packed, uint8 houseID);
 extern uint16 Map_FindLocationTile(uint16 locationID, uint8 houseID);
-extern void Map_UpdateAround(uint16 arg06, tile32 position, struct Unit *unit, uint8 function);
+extern void Map_UpdateAround(uint16 radius, tile32 position, struct Unit *unit, uint8 function);
 extern uint16 Map_SearchSpice(uint16 packed, uint16 radius);
-extern void Map_SelectNext(bool arg06);
+extern void Map_SelectNext(bool getNext);
 extern bool Map_UnveilTile(uint16 packed, uint8 houseID);
 extern void Map_CreateLandscape(uint32 seed);
 extern void Map_MarkTileDirty(uint16 packed);

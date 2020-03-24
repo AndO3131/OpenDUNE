@@ -4,7 +4,7 @@
 #define EXPLOSION_H
 
 enum {
-    EXPLOSION_MAX = 32                                      /*!< The maximum amount of active explosions we can have. */
+	EXPLOSION_MAX = 32                                      /*!< The maximum amount of active explosions we can have. */
 };
 
 /**
@@ -32,6 +32,7 @@ typedef enum ExplosionType {
 	EXPLOSION_MINI_ROCKET         = 18,
 	EXPLOSION_SPICE_BLOOM_TREMOR  = 19,
 
+	EXPLOSIONTYPE_MAX             = 20,
 	EXPLOSION_INVALID             = 0xFFFF
 } ExplosionType;
 
@@ -72,10 +73,11 @@ typedef struct Explosion {
 	tile32 position;                                        /*!< Position where this explosion acts. */
 } Explosion;
 
-extern Explosion g_explosions[];
-extern const ExplosionCommandStruct *g_table_explosion[];
+extern const ExplosionCommandStruct * const g_table_explosion[EXPLOSIONTYPE_MAX];
 
+extern void Explosion_Init(void);
 extern void Explosion_Start(uint16 explosionType, tile32 position);
 extern void Explosion_Tick(void);
+extern Explosion *Explosion_Get_ByIndex(int i);
 
 #endif /* EXPLOSION_H */

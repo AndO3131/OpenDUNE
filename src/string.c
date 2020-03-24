@@ -7,6 +7,8 @@
 #include "types.h"
 #include "os/common.h"
 #include "os/strings.h"
+#include "os/endian.h"
+#include "os/error.h"
 
 #include "string.h"
 
@@ -17,34 +19,53 @@
 static char **s_strings = NULL;
 static uint16 s_stringsCount = 0;
 
-const char * const g_languageSuffixes[] = { "ENG", "FRE", "GER", "ITA", "SPA" };
-static const char *s_stringDecompress = " etainosrlhcdupmtasio wb rnsdalmh ieorasnrtlc synstcloer dtgesionr ufmsw tep.icae oiadur laeiyodeia otruetoakhlr eiu,.oansrctlaileoiratpeaoip bm";
+const char * const g_languageSuffixes[LANGUAGE_MAX] = { "ENG", "FRE", "GER", "ITA", "SPA" };
 
 /**
  * Decompress a string.
+ *
+ * Characters values >= 0x80 (1AAAABBB) are unpacked to 2 characters
+ * from the table. AAAA gives the 1st characted.
+ * BBB the 2nd one (from a sub-table depending on AAAA)
  *
  * @param source The compressed string.
  * @param dest The decompressed string.
  * @return The length of decompressed string.
  */
-uint16 String_Decompress(char *source, char *dest)
+uint16 String_Decompress(const char *s, char *dest, uint16 destLen)
 {
+	static const char couples[] =
+		" etainosrlhcdupm"	/* 1st char */
+		"tasio wb"	/* <SPACE>? */
+		" rnsdalm"	/* e? */
+		"h ieoras"	/* t? */
+		"nrtlc sy"	/* a? */
+		"nstcloer"	/* i? */
+		" dtgesio"	/* n? */
+		"nr ufmsw"	/* o? */
+		" tep.ica"	/* s? */
+		"e oiadur"	/* r? */
+		" laeiyod"	/* l? */
+		"eia otru"	/* h? */
+		"etoakhlr"	/* c? */
+		" eiu,.oa"	/* d? */
+		"nsrctlai"	/* u? */
+		"leoiratp"	/* p? */
+		"eaoip bm";	/* m? */
 	uint16 count;
-	char *s;
 
-	count = 0;
-
-	for (s = source; *s != '\0'; s++) {
+	for (count = 0; *s != '\0'; s++) {
 		uint8 c = *s;
 		if ((c & 0x80) != 0) {
-			c &= 0x78;
-			c >>= 3;
-			dest[count++] = s_stringDecompress[c];
-			c <<= 3;
-			c += (*s & 0x07);
-			c = s_stringDecompress[c + 16];
+			c &= 0x7F;
+			dest[count++] = couples[c >> 3];	/* 1st char */
+			c = couples[c + 16];	/* 2nd char */
 		}
 		dest[count++] = c;
+		if (count >= destLen - 1) {
+			Warning("String_Decompress() : truncating output !\n");
+			break;
+		}
 	}
 	dest[count] = '\0';
 	return count;
@@ -83,58 +104,65 @@ char *String_Get_ByIndex(uint16 stringID)
  * @param source The untranslated string.
  * @param dest The translated string.
  */
-void String_TranslateSpecial(char *source, char *dest)
+void String_TranslateSpecial(char *string)
 {
-	if (source == NULL || dest == NULL) return;
+	char * dest;
+	if (string == NULL) return;
 
-	while (*source != '\0') {
-		char c = *source++;
+	dest = string;
+	while (*string != '\0') {
+		char c = *string++;
 		if (c == 0x1B) {
-			c = 0x7F + (*source++);
+			c = 0x7F + (*string++);
 		}
 		*dest++ = c;
 	}
 	*dest = '\0';
 }
 
-static void String_Load(const char *filename, bool compressed)
+static void String_Load(const char *filename, bool compressed, int start, int end)
 {
-	void *buf;
+	uint8 *buf;
 	uint16 count;
 	uint16 i;
+	char decomp_buffer[1024];
 
 	buf = File_ReadWholeFile(String_GenerateFilename(filename));
-	count = *(uint16 *)buf / 2;
+	count = READ_LE_UINT16(buf) / 2;
 
-	s_stringsCount += count;
-	s_strings = (char **)realloc(s_strings, s_stringsCount * sizeof(char *));
-	s_strings[s_stringsCount - count] = NULL;
+	if (end < 0) end = start + count - 1;
 
-	for (i = 0; i < count; i++) {
-		char *src = (char *)buf + ((uint16 *)buf)[i];
+	s_strings = (char **)realloc(s_strings, (end + 1) * sizeof(char *));
+	s_strings[s_stringsCount] = NULL;
+
+	for (i = 0; i < count && s_stringsCount <= end; i++) {
+		char *src = (char *)buf + READ_LE_UINT16(buf + i * 2);
 		char *dst;
 
 		if (compressed) {
-			dst = (char *)calloc(strlen(src) * 2 + 1, sizeof(char));
-			String_Decompress(src, dst);
-			String_TranslateSpecial(dst, dst);
+			uint16 len;
+			len = String_Decompress(src, decomp_buffer, (uint16)sizeof(decomp_buffer));
+			String_TranslateSpecial(decomp_buffer);
+			String_Trim(decomp_buffer);
+			dst = strdup(decomp_buffer);
 		} else {
 			dst = strdup(src);
+			String_Trim(dst);
 		}
-
-		String_Trim(dst);
 
 		if (strlen(dst) == 0 && s_strings[0] != NULL) {
-			s_stringsCount--;
 			free(dst);
-			continue;
+		} else {
+			s_strings[s_stringsCount++] = dst;
 		}
-
-		s_strings[s_stringsCount - count + i] = dst;
 	}
 
 	/* EU version has one more string in DUNE langfile. */
 	if (s_stringsCount == STR_LOAD_GAME) s_strings[s_stringsCount++] = strdup(s_strings[STR_LOAD_A_GAME]);
+
+	while (s_stringsCount <= end) {
+		s_strings[s_stringsCount++] = NULL;
+	}
 
 	free(buf);
 }
@@ -144,13 +172,13 @@ static void String_Load(const char *filename, bool compressed)
  */
 void String_Init(void)
 {
-	String_Load("DUNE", false);
-	String_Load("MESSAGE", false);
-	String_Load("INTRO", false);
-	String_Load("TEXTH",true);
-	String_Load("TEXTA", true);
-	String_Load("TEXTO",true);
-	String_Load("PROTECT", true);
+	String_Load("DUNE",     false,   1, 339);
+	String_Load("MESSAGE",  false, 340, 367);
+	String_Load("INTRO",    false, 368, 404);
+	String_Load("TEXTH",    true,  405, 444);
+	String_Load("TEXTA",    true,  445, 484);
+	String_Load("TEXTO",    true,  485, 524);
+	String_Load("PROTECT",  true,  525,  -1);
 }
 
 /**

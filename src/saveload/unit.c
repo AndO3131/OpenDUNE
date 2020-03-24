@@ -1,6 +1,7 @@
 /** @file src/saveload/unit.c Load/save routines for Unit. */
 
 #include <stdio.h>
+#include <string.h>
 #include "types.h"
 
 #include "saveload.h"
@@ -19,7 +20,8 @@ static const SaveLoadDesc s_saveUnitOrientation[] = {
 static const SaveLoadDesc s_saveUnit[] = {
 	SLD_SLD   (Unit,              o, g_saveObject),
 	SLD_EMPTY (      SLDT_UINT16),
-	SLD_ENTRY (Unit, SLDT_UINT32, currentDestination),
+	SLD_ENTRY (Unit, SLDT_UINT16, currentDestination.x),
+	SLD_ENTRY (Unit, SLDT_UINT16, currentDestination.y),
 	SLD_ENTRY (Unit, SLDT_UINT16, originEncoded),
 	SLD_ENTRY (Unit, SLDT_UINT8,  actionID),
 	SLD_ENTRY (Unit, SLDT_UINT8,  nextActionID),
@@ -29,10 +31,12 @@ static const SaveLoadDesc s_saveUnit[] = {
 	SLD_ENTRY (Unit, SLDT_UINT16, targetMove),
 	SLD_ENTRY (Unit, SLDT_UINT8,  amount),
 	SLD_ENTRY (Unit, SLDT_UINT8,  deviated),
-	SLD_ENTRY (Unit, SLDT_UINT32, targetLast),
-	SLD_ENTRY (Unit, SLDT_UINT32, targetPreLast),
+	SLD_ENTRY (Unit, SLDT_UINT16, targetLast.x),
+	SLD_ENTRY (Unit, SLDT_UINT16, targetLast.y),
+	SLD_ENTRY (Unit, SLDT_UINT16, targetPreLast.x),
+	SLD_ENTRY (Unit, SLDT_UINT16, targetPreLast.y),
 	SLD_SLD2  (Unit, orientation, s_saveUnitOrientation, 2),
-	SLD_ENTRY (Unit, SLDT_UINT8,  speedSub),
+	SLD_ENTRY (Unit, SLDT_UINT8,  speedPerTick),
 	SLD_ENTRY (Unit, SLDT_UINT8,  speedRemainder),
 	SLD_ENTRY (Unit, SLDT_UINT8,  speed),
 	SLD_ENTRY (Unit, SLDT_UINT8,  movingSpeed),
@@ -52,7 +56,9 @@ static const SaveLoadDesc s_saveUnitNewIndex[] = {
 
 static const SaveLoadDesc s_saveUnitNew[] = {
 	SLD_ENTRY (Unit, SLDT_UINT16, fireDelay),
-	SLD_EMPTY2(      SLDT_UINT16, 7),
+	SLD_ENTRY (Unit, SLDT_UINT8,  deviatedHouse),
+	SLD_EMPTY (      SLDT_UINT8),
+	SLD_EMPTY2(      SLDT_UINT16, 6),
 	SLD_END
 };
 
@@ -69,6 +75,8 @@ bool Unit_Load(FILE *fp, uint32 length)
 		Unit *u;
 		Unit ul;
 
+		memset(&ul, 0, sizeof(ul));
+
 		/* Read the next Structure from disk */
 		if (!SaveLoad_Load(s_saveUnit, fp, &ul)) return false;
 
@@ -80,8 +88,8 @@ bool Unit_Load(FILE *fp, uint32 length)
 		ul.timer = 0;
 		ul.o.seenByHouses |= 1 << ul.o.houseID;
 
-		/* In original Dune2 savegames, speedSub was shifted left by 4 */
-		if (ul.speedSub > 0xF) ul.speedSub >>= 4;
+		/* In case the new ODUN chunk is not available, Ordos is always the one who deviated */
+		if (ul.deviated != 0) ul.deviatedHouse = HOUSE_ORDOS;
 
 		/* ENHANCEMENT -- Due to wrong parameter orders of Unit_Create in original Dune2,
 		 *  it happened that units exists with houseID 13. This in fact are Trikes with

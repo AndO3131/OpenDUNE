@@ -5,10 +5,10 @@
 
 #include "../team.h"
 
-const char *g_table_teamActionName[TEAM_ACTION_MAX] = {
-        "Normal",
-        "Staging",
-        "Flee",
-        "Kamikaze",
-        "Guard"
+const char * const g_table_teamActionName[TEAM_ACTION_MAX] = {
+	"Normal",
+	"Staging",
+	"Flee",
+	"Kamikaze",
+	"Guard"
 };

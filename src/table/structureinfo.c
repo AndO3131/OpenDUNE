@@ -9,7 +9,7 @@
 #include "../unit.h"
 #include "strings.h"
 
-StructureInfo g_table_structureInfo[] = {
+StructureInfo g_table_structureInfo[STRUCTURE_MAX] = {
 	{ /* 0 */
 		{ /* objectInfo */
 		/* stringID_abbrev      */ STR_CONCRETE,
@@ -46,7 +46,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_CONCRETE_USE_CONCRETE_TO_MAKE_A_STURDY_FOUNDATION_FOR_YOUR_STRUCTURES,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 5,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -111,7 +111,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_CONCRETE_USE_CONCRETE_TO_MAKE_A_STURDY_FOUNDATION_FOR_YOUR_STRUCTURES,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 10,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -176,7 +176,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_PALACE_THIS_IS_YOUR_PALACE,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 400,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -241,7 +241,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_LIGHT_FACTORY_THE_LIGHT_FACTORY_PRODUCES_LIGHT_ATTACK_VEHICLES,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 200,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -306,7 +306,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_HEAVY_FACTORY_THE_HEAVY_FACTORY_PRODUCES_TRACKED_VEHICLES,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 600,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -371,7 +371,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_HITECH_FACTORY_THE_HITECH_FACTORY_PRODUCES_FLYING_VEHICLES,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 200,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -436,7 +436,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_HOUSE_IX_THE_IX_RESEARCH_FACILITY_ADVANCES_YOUR_HOUSES_TECHNOLOGY,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 100,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -566,7 +566,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_CONSTRUCTION_FACILITY_ALL_STRUCTURES_ARE_BUILT_BY_THE_CONSTRUCTION_FACILITY,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 300,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -631,7 +631,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_WINDTRAP_THE_WINDTRAP_SUPPLIES_POWER_TO_YOUR_BASE_WITHOUT_POWER_YOUR_STRUCTURES_WILL_DECAY,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 300,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -761,7 +761,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_STARTPORT_THE_STARPORT_IS_USED_TO_ORDER_AND_RECEIVE_SHIPMENTS_FROM_CHOAM,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 250,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -826,7 +826,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_SPICE_REFINERY_THE_REFINERY_CONVERTS_SPICE_INTO_CREDITS,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 300,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_HARVESTER,
 		/* creditsStorage       */ 1005,
@@ -891,7 +891,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_REPAIR_FACILITY_THE_REPAIR_FACILITY_IS_USED_TO_REPAIR_YOUR_VEHICLES,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 600,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_HARVESTER | FLAG_UNIT_QUAD | FLAG_UNIT_RAIDER_TRIKE | FLAG_UNIT_TRIKE | FLAG_UNIT_SONIC_TANK | FLAG_UNIT_DEVASTATOR | FLAG_UNIT_SIEGE_TANK | FLAG_UNIT_TANK | FLAG_UNIT_DEVIATOR | FLAG_UNIT_LAUNCHER,
 		/* creditsStorage       */ 0,
@@ -956,7 +956,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_WALL_THE_WALL_IS_USED_FOR_PASSIVE_DEFENSE,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 30,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -1021,7 +1021,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_GUN_TURRET_THE_CANNON_TURRET_IS_USED_FOR_SHORT_RANGE_ACTIVE_DEFENSE,
 		/* priorityBuild        */ 75,
 		/* priorityTarget       */ 150,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -1086,7 +1086,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_ROCKET_TURRET_THE_ROCKETCANNON_TURRET_IS_USED_FOR_BOTH_SHORT_AND_MEDIUM_RANGE_ACTIVE_DEFENSE,
 		/* priorityBuild        */ 100,
 		/* priorityTarget       */ 75,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -1151,7 +1151,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_SPICE_SILO_THE_SPICE_SILO_IS_USED_TO_STORE_REFINED_SPICE,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 150,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 1000,
@@ -1216,7 +1216,7 @@ StructureInfo g_table_structureInfo[] = {
 		/* hintStringID         */ STR_OUTPOST_THE_OUTPOST_PROVIDES_RADAR_AND_AIDS_CONTROL_OF_DISTANT_VEHICLES,
 		/* priorityBuild        */ 0,
 		/* priorityTarget       */ 275,
-		/* availableHouse       */ FLAG_HOUSE_MERCENARY | FLAG_HOUSE_SARDAUKAR | FLAG_HOUSE_FREMEN | FLAG_HOUSE_ORDOS | FLAG_HOUSE_ATREIDES | FLAG_HOUSE_HARKONNEN,
+		/* availableHouse       */ FLAG_HOUSE_ALL,
 		},
 		/* enterFilter          */ FLAG_UNIT_NONE,
 		/* creditsStorage       */ 0,
@@ -1247,7 +1247,7 @@ StructureInfo g_table_structureInfo[] = {
 };
 
 /** Array with position offset per tile in a structure layout. */
-const uint16 g_table_structure_layoutTiles[][9] = {
+const uint16 g_table_structure_layoutTiles[STRUCTURE_LAYOUT_MAX][9] = {
 	{0,    0,    0,    0,     0,     0,     0,     0,     0}, /* STRUCTURE_LAYOUT_1x1 */
 	{0,    1,    0,    0,     0,     0,     0,     0,     0}, /* STRUCTURE_LAYOUT_2x1 */
 	{0, 64+0,    0,    0,     0,     0,     0,     0,     0}, /* STRUCTURE_LAYOUT_1x2 */
@@ -1258,7 +1258,7 @@ const uint16 g_table_structure_layoutTiles[][9] = {
 };
 
 /** Array with position offset of edge tiles in a structure layout. */
-const uint16 g_table_structure_layoutEdgeTiles[][8] = {
+const uint16 g_table_structure_layoutEdgeTiles[STRUCTURE_LAYOUT_MAX][8] = {
 	{0, 0,    0,     0,     0,     0,     0, 0}, /* STRUCTURE_LAYOUT_1x1 */
 	{0, 1,    1,     1,     1,     0,     0, 0}, /* STRUCTURE_LAYOUT_2x1 */
 	{0, 0,    0,  64+0,  64+0,  64+0,     0, 0}, /* STRUCTURE_LAYOUT_1x2 */
@@ -1269,7 +1269,7 @@ const uint16 g_table_structure_layoutEdgeTiles[][8] = {
 };
 
 /** Array with number of tiles in a layout. */
-const uint16 g_table_structure_layoutTileCount[] = {
+const uint16 g_table_structure_layoutTileCount[STRUCTURE_LAYOUT_MAX] = {
 	1, /* STRUCTURE_LAYOUT_1x1 */
 	2, /* STRUCTURE_LAYOUT_2x1 */
 	2, /* STRUCTURE_LAYOUT_1x2 */
@@ -1280,18 +1280,18 @@ const uint16 g_table_structure_layoutTileCount[] = {
 };
 
 /** Array with TileDiff of a layout. */
-const tile32 g_table_structure_layoutTileDiff[] = {
-	{{0x0080, 0x0080}}, /* STRUCTURE_LAYOUT_1x1 */
-	{{0x0100, 0x0080}}, /* STRUCTURE_LAYOUT_2x1 */
-	{{0x0080, 0x0100}}, /* STRUCTURE_LAYOUT_1x2 */
-	{{0x0100, 0x0100}}, /* STRUCTURE_LAYOUT_2x2 */
-	{{0x0100, 0x0180}}, /* STRUCTURE_LAYOUT_2x3 */
-	{{0x0280, 0x0100}}, /* STRUCTURE_LAYOUT_3x2 */
-	{{0x0180, 0x0180}}, /* STRUCTURE_LAYOUT_3x3 */
+const tile32 g_table_structure_layoutTileDiff[STRUCTURE_LAYOUT_MAX] = {
+	{0x0080, 0x0080}, /* STRUCTURE_LAYOUT_1x1 */
+	{0x0100, 0x0080}, /* STRUCTURE_LAYOUT_2x1 */
+	{0x0080, 0x0100}, /* STRUCTURE_LAYOUT_1x2 */
+	{0x0100, 0x0100}, /* STRUCTURE_LAYOUT_2x2 */
+	{0x0100, 0x0180}, /* STRUCTURE_LAYOUT_2x3 */
+	{0x0280, 0x0100}, /* STRUCTURE_LAYOUT_3x2 */
+	{0x0180, 0x0180}, /* STRUCTURE_LAYOUT_3x3 */
 };
 
 /** Array with size of a layout. */
-const XYSize g_table_structure_layoutSize[] = {
+const XYSize g_table_structure_layoutSize[STRUCTURE_LAYOUT_MAX] = {
 	{1, 1}, /* STRUCTURE_LAYOUT_1x1 */
 	{2, 1}, /* STRUCTURE_LAYOUT_2x1 */
 	{1, 2}, /* STRUCTURE_LAYOUT_1x2 */
@@ -1302,7 +1302,7 @@ const XYSize g_table_structure_layoutSize[] = {
 };
 
 /** Array with position offset per tile around a structure layout. */
-const int16 g_table_structure_layoutTilesAround[][16] = {
+const int16 g_table_structure_layoutTilesAround[STRUCTURE_LAYOUT_MAX][16] = {
 	{-64, -64+1,     1,  64+1,  64+0,  64-1,    -1, -64-1,     0,     0,     0,     0,     0,     0,  0,     0}, /* STRUCTURE_LAYOUT_1x1 */
 	{-64, -64+1, -64+2,     2,  64+2,  64+1,  64+0,  64-1,    -1, -64-1,     0,     0,     0,     0,  0,     0}, /* STRUCTURE_LAYOUT_2x1 */
 	{-64, -64+1,     1,  64+1, 128+1, 128+0, 128-1,  64-1,    -1, -64-1,     0,     0,     0,     0,  0,     0}, /* STRUCTURE_LAYOUT_1x2 */

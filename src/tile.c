@@ -14,113 +14,6 @@
 
 
 /**
- * Check whether a tile is valid.
- *
- * @param tile The tile32 to check for validity.
- * @return True if valid, false if not.
- */
-bool Tile_IsValid(tile32 tile)
-{
-	return (tile.d.ux == 0x0 && tile.d.uy == 0x0);
-}
-
-/**
- * Make a tile32 from an X- and Y-position.
- *
- * @param x The X-position.
- * @param y The Y-position.
- * @return A tile32 at the top-left corner of the X- and Y-position.
- */
-tile32 Tile_MakeXY(uint16 x, uint16 y)
-{
-	tile32 tile;
-
-	tile.tile = 0;
-	tile.d.px = x;
-	tile.d.py = y;
-
-	return tile;
-}
-
-/**
- * Returns the X-position of the tile.
- *
- * @param tile The tile32 to get the X-position from.
- * @return The X-position of the tile.
- */
-uint8 Tile_GetPosX(tile32 tile)
-{
-	return tile.d.px;
-}
-
-/**
- * Returns the Y-position of the tile.
- *
- * @param tile The tile32 to get the Y-position from.
- * @return The Y-position of the tile.
- */
-uint8 Tile_GetPosY(tile32 tile)
-{
-	return tile.d.py;
-}
-
-/**
- * Returns the tile as an uint32 value.
- *
- * @param tile The tile32 to retrieve the data from.
- * @return The uint32 representation of the tile32.
- */
-uint32 Tile_GetXY(tile32 tile)
-{
-	return tile.tile;
-}
-
-/**
- * Returns the X-position of the tile.
- *
- * @param tile The tile32 to get the X-position from.
- * @return The X-position of the tile.
- */
-uint16 Tile_GetX(tile32 tile)
-{
-	return tile.s.x;
-}
-
-/**
- * Returns the Y-position of the tile.
- *
- * @param tile The tile32 to get the Y-position from.
- * @return The Y-position of the tile.
- */
-uint16 Tile_GetY(tile32 tile)
-{
-	return tile.s.y;
-}
-
-/**
- * Packs a 32 bits tile struct into a 12 bits packed tile.
- *
- * @param tile The tile32 to get it's Y-position from.
- * @return The tile packed into 12 bits.
- */
-uint16 Tile_PackTile(tile32 tile)
-{
-	return (tile.d.py << 6) | tile.d.px;
-}
-
-/**
- * Packs an x and y coordinate into a 12 bits packed tile.
- *
- * @param x The X-coordinate from.
- * @param x The Y-coordinate from.
- * @return The coordinates packed into 12 bits.
- */
-uint16 Tile_PackXY(uint16 x, uint16 y)
-{
-	return (y << 6) | x;
-}
-
-/**
  * Unpacks a 12 bits packed tile to a 32 bits tile struct.
  *
  * @param packed The uint16 containing the 12 bits packed tile information.
@@ -130,45 +23,10 @@ tile32 Tile_UnpackTile(uint16 packed)
 {
 	tile32 tile;
 
-	tile.tile = 0;
-	tile.d.px = (packed >> 0) & 0x3F;
-	tile.d.py = (packed >> 6) & 0x3F;
-	tile.d.ox = 0x80;
-	tile.d.oy = 0x80;
+	tile.x = (((packed >> 0) & 0x3F) << 8) | 0x80;
+	tile.y = (((packed >> 6) & 0x3F) << 8) | 0x80;
 
 	return tile;
-}
-
-/**
- * Unpacks a 12 bits packed tile and retrieves the X-position.
- *
- * @param packed The uint16 containing the 12 bits packed tile.
- * @return The unpacked X-position.
- */
-uint8 Tile_GetPackedX(uint16 packed)
-{
-	return (packed >> 0) & 0x3F;
-}
-
-/**
- * Unpacks a 12 bits packed tile and retrieves the Y-position.
- *
- * @param packed The uint16 containing the 12 bits packed tile.
- * @return The unpacked Y-position.
- */
-uint8 Tile_GetPackedY(uint16 packed)
-{
-	return (packed >> 6) & 0x3F;
-}
-
-/**
- * Check if a packed tile is out of map. Useful after additional or substraction.
- * @param packed The packed tile to check.
- * @return True if and only if the tile is out of map.
- */
-bool Tile_IsOutOfMap(uint16 packed)
-{
-	return (packed & 0xF000) != 0;
 }
 
 /**
@@ -180,8 +38,8 @@ bool Tile_IsOutOfMap(uint16 packed)
  */
 uint16 Tile_GetDistance(tile32 from, tile32 to)
 {
-	uint16 distance_x = abs(from.s.x - to.s.x);
-	uint16 distance_y = abs(from.s.y - to.s.y);
+	uint16 distance_x = abs(from.x - to.x);
+	uint16 distance_y = abs(from.y - to.y);
 
 	if (distance_x > distance_y) return distance_x + (distance_y / 2);
 	return distance_y + (distance_x / 2);
@@ -198,8 +56,8 @@ tile32 Tile_AddTileDiff(tile32 from, tile32 diff)
 {
 	tile32 result;
 
-	result.s.x = from.s.x + diff.s.x;
-	result.s.y = from.s.y + diff.s.y;
+	result.x = from.x + diff.x;
+	result.y = from.y + diff.y;
 
 	return result;
 }
@@ -214,8 +72,8 @@ tile32 Tile_Center(tile32 tile)
 	tile32 result;
 
 	result = tile;
-	result.d.ox = 0x80;
-	result.d.oy = 0x80;
+	result.x = (result.x & 0xff00) | 0x80;
+	result.y = (result.y & 0xff00) | 0x80;
 
 	return result;
 }
@@ -259,13 +117,16 @@ void Tile_RemoveFogInRadius(tile32 tile, uint16 radius)
 	uint16 x, y;
 	int16 i, j;
 
+	/* TODO this code could be simplified */
 	packed = Tile_PackTile(tile);
 
 	if (!Map_IsValidPosition(packed)) return;
 
+	/* setting tile from its packed position equals removing the
+	 * non integer part */
 	x = Tile_GetPackedX(packed);
 	y = Tile_GetPackedY(packed);
-	tile = Tile_MakeXY(x, y);
+	Tile_MakeXY(tile, x, y);
 
 	for (i = -radius; i <= radius; i++) {
 		for (j = -radius; j <= radius; j++) {
@@ -275,7 +136,7 @@ void Tile_RemoveFogInRadius(tile32 tile, uint16 radius)
 			if ((y + j) < 0 || (y + j) >= 64) continue;
 
 			packed = Tile_PackXY(x + i, y + j);
-			t = Tile_MakeXY(x + i, y + j);
+			Tile_MakeXY(t, x + i, y + j);
 
 			if (Tile_GetDistanceRoundedUp(tile, t) > radius) continue;
 
@@ -295,7 +156,6 @@ uint16 Tile_GetTileInDirectionOf(uint16 packed_from, uint16 packed_to)
 {
 	int16 distance;
 	uint8 direction;
-	uint8 i;
 
 	if (packed_from == 0 || packed_to == 0) return 0;
 
@@ -304,12 +164,12 @@ uint16 Tile_GetTileInDirectionOf(uint16 packed_from, uint16 packed_to)
 
 	if (distance <= 10) return 0;
 
-	for (i = 0; i < 4; i++) {
+	while (true) {
 		int16 dir;
 		tile32 position;
 		uint16 packed;
 
-		dir = 29 + (Tools_Random_256() & 0x3F);
+		dir = 31 + (Tools_Random_256() & 0x3F);
 
 		if ((Tools_Random_256() & 1) != 0) dir = -dir;
 
@@ -332,7 +192,7 @@ uint16 Tile_GetTileInDirectionOf(uint16 packed_from, uint16 packed_to)
  */
 uint8 Tile_GetDirectionPacked(uint16 packed_from, uint16 packed_to)
 {
-	static uint8 returnValues[16] = {0x20, 0x40, 0x20, 0x00, 0xE0, 0xC0, 0xE0, 0x00, 0x60, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xA0, 0x80};
+	static const uint8 returnValues[16] = {0x20, 0x40, 0x20, 0x00, 0xE0, 0xC0, 0xE0, 0x00, 0x60, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xA0, 0x80};
 
 	int16 x1, y1, x2, y2;
 	int16 dx, dy;
@@ -415,12 +275,22 @@ static const int8 _stepY[256] = {
  */
 tile32 Tile_MoveByDirection(tile32 tile, int16 orientation, uint16 distance)
 {
+	int diffX, diffY;
+	int roundingOffsetX, roundingOffsetY;
+
 	distance = min(distance, 0xFF);
 
 	if (distance == 0) return tile;
 
-	tile.s.x += (64 + _stepX[orientation & 0xFF] * distance) / 128;
-	tile.s.y += (64 - _stepY[orientation & 0xFF] * distance) / 128;
+	diffX = _stepX[orientation & 0xFF];
+	diffY = _stepY[orientation & 0xFF];
+
+	/* Always round away from zero */
+	roundingOffsetX = diffX < 0 ? -64 : 64;
+	roundingOffsetY = diffY < 0 ? -64 : 64;
+
+	tile.x += (diffX * distance + roundingOffsetX) / 128;
+	tile.y -= (diffY * distance + roundingOffsetY) / 128;
 
 	return tile;
 }
@@ -456,8 +326,8 @@ tile32 Tile_MoveByRandom(tile32 tile, uint16 distance, bool center)
 
 	if (x > 16384 || y > 16384) return tile;
 
-	ret.s.x = x;
-	ret.s.y = y;
+	ret.x = x;
+	ret.y = y;
 
 	return center ? Tile_Center(ret) : ret;
 }
@@ -471,7 +341,7 @@ tile32 Tile_MoveByRandom(tile32 tile, uint16 distance, bool center)
  */
 int8 Tile_GetDirection(tile32 from, tile32 to)
 {
-	static const uint16 mapOffsets[] = {0x40, 0x80, 0x0, 0xC0};
+	static const uint16 orientationOffsets[] = {0x40, 0x80, 0x0, 0xC0};
 	static const int32 directions[] = {
 			0x3FFF, 0x28BC, 0x145A, 0xD8E,  0xA27, 0x81B, 0x6BD, 0x5C3,  0x506, 0x474, 0x3FE, 0x39D,  0x34B, 0x306, 0x2CB, 0x297,
 			0x26A,  0x241,  0x21D,  0x1FC,  0x1DE, 0x1C3, 0x1AB, 0x194,  0x17F, 0x16B, 0x159, 0x148,  0x137, 0x128, 0x11A, 0x10C
@@ -479,14 +349,14 @@ int8 Tile_GetDirection(tile32 from, tile32 to)
 
 	int32 dx;
 	int32 dy;
-	uint16 loc02;
-	int32 loc06;
-	uint16 loc08;
+	uint16 i;
+	int32 gradient;
+	uint16 baseOrientation;
 	bool invert;
-	uint16 loc0C = 0;
+	uint16 quadrant = 0;
 
-	dx = to.s.x - from.s.x;
-	dy = to.s.y - from.s.y;
+	dx = to.x - from.x;
+	dy = to.y - from.y;
 
 	if (abs(dx) + abs(dy) > 8000) {
 		dx /= 2;
@@ -494,35 +364,35 @@ int8 Tile_GetDirection(tile32 from, tile32 to)
 	}
 
 	if (dy <= 0) {
-		loc0C |= 2;
+		quadrant |= 0x2;
 		dy = -dy;
 	}
 
 	if (dx < 0) {
-		loc0C |= 1;
+		quadrant |= 0x1;
 		dx = -dx;
 	}
 
-	loc08 = mapOffsets[loc0C];
+	baseOrientation = orientationOffsets[quadrant];
 	invert = false;
-	loc06 = 0x7FFF;
+	gradient = 0x7FFF;
 
 	if (dx >= dy) {
-		if (dy != 0) loc06 = (dx << 8) / dy;
+		if (dy != 0) gradient = (dx << 8) / dy;
 	} else {
 		invert = true;
-		if (dx != 0) loc06 = (dy << 8) / dx;
+		if (dx != 0) gradient = (dy << 8) / dx;
 	}
 
-	for (loc02 = 0; loc02 < lengthof(directions); loc02++) {
-		if (directions[loc02] <= loc06) break;
+	for (i = 0; i < lengthof(directions); i++) {
+		if (directions[i] <= gradient) break;
 	}
 
-	if (!invert) loc02 = 64 - loc02;
+	if (!invert) i = 64 - i;
 
-	if (loc0C == 0 || loc0C == 3) return (loc08 + 64 - loc02) & 0xFF;
+	if (quadrant == 0 || quadrant == 3) return (baseOrientation + 64 - i) & 0xFF;
 
-	return (loc08 + loc02) & 0xFF;
+	return (baseOrientation + i) & 0xFF;
 }
 
 /**
@@ -549,8 +419,8 @@ tile32 Tile_MoveByOrientation(tile32 position, uint8 orientation)
 
 	if (x > 16384 || y > 16384) return position;
 
-	position.s.x = x;
-	position.s.y = y;
+	position.x = x;
+	position.y = y;
 
 	return position;
 }

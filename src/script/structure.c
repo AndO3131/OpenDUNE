@@ -137,10 +137,10 @@ uint16 Script_Structure_RefineSpice(ScriptEngine *script)
 
 	if (House_AreAllied(g_playerHouseID, s->o.houseID)) {
 		g_scenario.harvestedAllied += creditsStep;
-		if (g_scenario.harvestedAllied > 0xFDE8) g_scenario.harvestedAllied = 0xFDE8;
+		if (g_scenario.harvestedAllied > 65000) g_scenario.harvestedAllied = 65000;
 	} else {
 		g_scenario.harvestedEnemy += creditsStep;
-		if (g_scenario.harvestedEnemy > 0xFDE8) g_scenario.harvestedEnemy = 0xFDE8;
+		if (g_scenario.harvestedEnemy > 65000) g_scenario.harvestedEnemy = 65000;
 	}
 
 	h = House_Get_ByIndex(s->o.houseID);
@@ -212,7 +212,7 @@ uint16 Script_Structure_FindUnitByType(ScriptEngine *script)
 
 	u = Unit_Get_ByIndex(s->o.linkedID);
 
-	if (g_playerHouseID == s->o.houseID && u->o.type == UNIT_HARVESTER && u->targetLast.tile == 0 && position != 0) {
+	if (g_playerHouseID == s->o.houseID && u->o.type == UNIT_HARVESTER && (u->targetLast.x == 0 && u->targetLast.y == 0) && position != 0) {
 		return IT_NONE;
 	}
 
@@ -307,6 +307,7 @@ uint16 Script_Structure_FindTargetUnit(ScriptEngine *script)
 	Unit *u;
 	uint32 distanceCurrent;
 	uint32 targetRange;
+	tile32 position;
 
 	s = g_scriptCurrentStructure;
 	targetRange = STACK_PEEK(1);
@@ -317,6 +318,13 @@ uint16 Script_Structure_FindTargetUnit(ScriptEngine *script)
 	find.index   = 0xFFFF;
 	find.type    = 0xFFFF;
 
+	/* ENHANCEMENT -- The original code calculated distances from the top-left corner of the structure. */
+	if (g_dune2_enhanced) {
+		position = Tile_Center(s->o.position);
+	} else {
+		position = s->o.position;
+	}
+
 	while (true) {
 		uint16 distance;
 		Unit *uf;
@@ -324,19 +332,27 @@ uint16 Script_Structure_FindTargetUnit(ScriptEngine *script)
 		uf = Unit_Find(&find);
 		if (uf == NULL) break;
 
-		if (House_AreAllied(s->o.houseID, uf->o.houseID)) continue;
+		if (House_AreAllied(s->o.houseID, Unit_GetHouseID(uf))) continue;
 
 		if (uf->o.type != UNIT_ORNITHOPTER) {
 			if ((uf->o.seenByHouses & (1 << s->o.houseID)) == 0) continue;
 		}
 
-		distance = Tile_GetDistance(uf->o.position, s->o.position);
+		distance = Tile_GetDistance(uf->o.position, position);
 		if (distance >= distanceCurrent) continue;
 
-		if (uf->o.type == UNIT_ORNITHOPTER) {
-			if (distance >= targetRange * 3) continue;
+		if (g_dune2_enhanced) {
+			if (uf->o.type == UNIT_ORNITHOPTER) {
+				if (distance > targetRange * 3) continue;
+			} else {
+				if (distance > targetRange) continue;
+			}
 		} else {
-			if (distance >= targetRange) continue;
+			if (uf->o.type == UNIT_ORNITHOPTER) {
+				if (distance >= targetRange * 3) continue;
+			} else {
+				if (distance >= targetRange) continue;
+			}
 		}
 
 		/* ENHANCEMENT -- The original code swapped the assignment, making it do nothing, Now it finds the closest unit to shoot at, what seems to be the intention */
@@ -361,7 +377,7 @@ uint16 Script_Structure_RotateTurret(ScriptEngine *script)
 	Structure *s;
 	tile32 lookAt;
 	Tile *tile;
-	uint16 baseSpriteID;
+	uint16 baseTileID;
 	uint16 encoded;
 	int16 rotation;
 	int16 rotationNeeded;
@@ -377,12 +393,12 @@ uint16 Script_Structure_RotateTurret(ScriptEngine *script)
 
 	/* Find the base sprite of the structure */
 	if (s->o.type == STRUCTURE_ROCKET_TURRET) {
-		baseSpriteID = g_iconMap[g_iconMap[ICM_ICONGROUP_BASE_ROCKET_TURRET] + 2];
+		baseTileID = g_iconMap[g_iconMap[ICM_ICONGROUP_BASE_ROCKET_TURRET] + 2];
 	} else {
-		baseSpriteID = g_iconMap[g_iconMap[ICM_ICONGROUP_BASE_DEFENSE_TURRET] + 2];
+		baseTileID = g_iconMap[g_iconMap[ICM_ICONGROUP_BASE_DEFENSE_TURRET] + 2];
 	}
 
-	rotation = tile->groundSpriteID - baseSpriteID;
+	rotation = tile->groundTileID - baseTileID;
 	if (rotation < 0 || rotation > 7) return 1;
 
 	/* Find what rotation we should have to look at the target */
@@ -403,7 +419,7 @@ uint16 Script_Structure_RotateTurret(ScriptEngine *script)
 	rotation &= 0x7;
 
 	/* Set the new sprites */
-	tile->groundSpriteID = baseSpriteID + rotation;
+	tile->groundTileID = baseTileID + rotation;
 	s->rotationSpriteDiff = rotation;
 
 	Map_Update(Tile_PackTile(s->o.position), 0, false);
@@ -519,9 +535,8 @@ uint16 Script_Structure_Fire(ScriptEngine *script)
 		fireDelay = Tools_AdjustToGameSpeed(g_table_unitInfo[UNIT_TANK].fireDelay, 1, 0xFFFF, true);
 	}
 
-	position.tile = s->o.position.tile;
-	position.s.x += 0x80;
-	position.s.y += 0x80;
+	position.x = s->o.position.x + 0x80;
+	position.y = s->o.position.y + 0x80;
 	u = Unit_CreateBullet(position, type, s->o.houseID, damage, target);
 
 	if (u == NULL) return 0;
@@ -615,9 +630,9 @@ uint16 Script_Structure_Destroy(ScriptEngine *script)
 	if (s->o.houseID != g_playerHouseID) return 0;
 
 	if (g_config.language == LANGUAGE_FRENCH) {
-		GUI_DisplayText("%s %s %s", 0, String_Get_ByIndex(g_table_structureInfo[s->o.type].o.stringID_full), g_table_houseInfo[s->o.houseID].name, String_Get_ByIndex(0x85));
+		GUI_DisplayText("%s %s %s", 0, String_Get_ByIndex(g_table_structureInfo[s->o.type].o.stringID_full), g_table_houseInfo[s->o.houseID].name, String_Get_ByIndex(STR_IS_DESTROYED));
 	} else {
-		GUI_DisplayText("%s %s %s", 0, g_table_houseInfo[s->o.houseID].name, String_Get_ByIndex(g_table_structureInfo[s->o.type].o.stringID_full), String_Get_ByIndex(0x85));
+		GUI_DisplayText("%s %s %s", 0, g_table_houseInfo[s->o.houseID].name, String_Get_ByIndex(g_table_structureInfo[s->o.type].o.stringID_full), String_Get_ByIndex(STR_IS_DESTROYED));
 	}
 
 	return 0;

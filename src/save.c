@@ -21,6 +21,7 @@
 #include "structure.h"
 #include "team.h"
 #include "unit.h"
+#include "file.h"
 
 /**
  * Save a chunk of data.
@@ -85,7 +86,7 @@ static bool Save_Main(FILE *fp, char *description)
 
 	/* Write the 'NAME' chunk. Keep ourself word-aligned. */
 	if (fwrite("NAME", 4, 1, fp) != 1) return false;
-	length = min(255, strlen(description) + 1);
+	length = min(255, (uint32)strlen(description) + 1);
 	lengthSwapped = HTOBE32(length);
 	if (fwrite(&lengthSwapped, 4, 1, fp) != 1) return false;
 	if (fwrite(description, length, 1, fp) != 1) return false;
@@ -120,10 +121,9 @@ static bool Save_Main(FILE *fp, char *description)
  * @param description The description of the savegame.
  * @return True if and only if all bytes were written successful.
  */
-bool SaveFile(char *filename, char *description)
+bool SaveGame_SaveFile(char *filename, char *description)
 {
 	FILE *fp;
-	char filenameComplete[1024];
 	bool res;
 
 	/* In debug-scenario mode, the whole map is uncovered. Cover it now in
@@ -137,7 +137,7 @@ bool SaveFile(char *filename, char *description)
 		for (i = 0; i < 0x1000; i++) {
 			Tile *tile = &g_map[i];
 			tile->isUnveiled = false;
-			tile->overlaySpriteID = g_veiledSpriteID;
+			tile->overlayTileID = g_veiledTileID;
 		}
 
 		find.houseID = HOUSE_INVALID;
@@ -164,15 +164,15 @@ bool SaveFile(char *filename, char *description)
 
 			s = Structure_Find(&find);
 			if (s == NULL) break;
+			if (s->o.type == STRUCTURE_SLAB_1x1 || s->o.type == STRUCTURE_SLAB_2x2 || s->o.type == STRUCTURE_WALL) continue;
 
 			Structure_RemoveFog(s);
 		}
 	}
 
-	snprintf(filenameComplete, sizeof(filenameComplete), "data/%s", filename);
-	fp = fopen(filenameComplete, "wb");
+	fp = fopendatadir(SEARCHDIR_PERSONAL_DATA_DIR, filename, "wb");
 	if (fp == NULL) {
-		Error("Failed to open file '%s' for writing.\n", filenameComplete);
+		Error("Failed to open file '%s' for writing.\n", filename);
 		return false;
 	}
 

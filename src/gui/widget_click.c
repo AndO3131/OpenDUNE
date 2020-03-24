@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "multichar.h"
 #include "types.h"
 #include "../os/endian.h"
 #include "../os/math.h"
@@ -11,6 +12,7 @@
 
 #include "gui.h"
 #include "widget.h"
+#include "../os/error.h"
 #include "../audio/driver.h"
 #include "../audio/sound.h"
 #include "../config.h"
@@ -168,12 +170,12 @@ bool GUI_Widget_Scrollbar_Click(Widget *w)
 	if (w->offsetY < 0) positionY += g_widgetProperties[w->parentID].height;
 	positionY += g_widgetProperties[w->parentID].yBase;
 
-	if ((w->state.s.buttonState & 0x44) != 0) {
+	if ((w->state.buttonState & 0x44) != 0) {
 		scrollbar->pressed = 0;
 		GUI_Widget_Scrollbar_Draw(w);
 	}
 
-	if ((w->state.s.buttonState & 0x11) != 0) {
+	if ((w->state.buttonState & 0x11) != 0) {
 		int16 positionCurrent;
 		int16 positionBegin;
 		int16 positionEnd;
@@ -198,7 +200,7 @@ bool GUI_Widget_Scrollbar_Click(Widget *w)
 		}
 	}
 
-	if ((w->state.s.buttonState & 0x22) != 0 && scrollbar->pressed != 0) {
+	if ((w->state.buttonState & 0x22) != 0 && scrollbar->pressed != 0) {
 		int16 position, size;
 
 		if (w->width > w->height) {
@@ -248,11 +250,18 @@ bool GUI_Widget_TextButton_Click(Widget *w)
 	ui = &g_table_unitInfo[u->o.type];
 
 	actions = ui->o.actionsPlayer;
-	if (Unit_GetHouseID(u) != g_playerHouseID && u->o.type != UNIT_SIEGE_TANK) {
+	if (Unit_GetHouseID(u) != g_playerHouseID && u->o.type != UNIT_HARVESTER) {
 		actions = g_table_actionsAI;
 	}
 
 	action = actions[w->index - 8];
+	if (g_dune2_enhanced) {
+		if (Input_Test(0x2c) || Input_Test(0x39)) {	/* LSHIFT or RSHIFT is pressed */
+			if (action == ACTION_GUARD) action = ACTION_AREA_GUARD;   /* AREA GUARD instead of GUARD */
+			else if (action == ACTION_ATTACK) action = ACTION_AMBUSH; /* AMBUSH instead of ATTACK */
+		}
+		Debug("GUI_Widget_TextButton_Click(%p index=%d) action=%d\n", w, w->index, action);
+	}
 
 	unitAction = u->nextActionID;
 	if (unitAction == ACTION_INVALID) {
@@ -293,7 +302,7 @@ bool GUI_Widget_TextButton_Click(Widget *w)
 	found = memchr(actions, unitAction, 4);
 	if (found == NULL) return true;
 
-	GUI_Widget_MakeNormal(GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, found - actions + 8), false);
+	GUI_Widget_MakeNormal(GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, (uint16)(found - actions + 8)), false);
 
 	return true;
 }
@@ -422,13 +431,13 @@ static void GUI_Widget_Undraw(Widget *w, uint8 colour)
 	width = w->width;
 	height = w->height;
 
-	if (g_screenActiveID == SCREEN_0) {
+	if (GFX_Screen_IsActive(SCREEN_0)) {
 		GUI_Mouse_Hide_InRegion(offsetX, offsetY, offsetX + width, offsetY + height);
 	}
 
 	GUI_DrawFilledRectangle(offsetX, offsetY, offsetX + width, offsetY + height, colour);
 
-	if (g_screenActiveID == SCREEN_0) {
+	if (GFX_Screen_IsActive(SCREEN_0)) {
 		GUI_Mouse_Show_InRegion();
 	}
 }
@@ -489,7 +498,7 @@ static void GUI_Window_Create(WindowDesc *desc)
 		w->drawParameterSelected.proc = &GUI_Widget_TextButton_Draw;
 		w->drawParameterDown.proc     = &GUI_Widget_TextButton_Draw;
 		w->parentID = desc->index;
-		w->state.all = 0x0;
+		memset(&w->state, 0, sizeof(w->state));
 
 		g_widgetLinkedListTail = GUI_Widget_Link(g_widgetLinkedListTail, w);
 
@@ -627,15 +636,15 @@ static void GUI_Widget_GameControls_Click(Widget *w)
 	GUI_Window_RestoreScreen(desc);
 }
 
+/* shade everything except colors 231 to 238 */
 static void ShadeScreen(void)
 {
 	uint16 i;
 
 	memmove(g_palette_998A, g_palette1, 256 * 3);
 
-	for (i = 0; i < 256 * 3; i++) g_palette1[i] = g_palette1[i] / 2;
-
-	for (i = 0; i < 8; i++) memmove(g_palette1 + ((231 + i) * 3), &g_palette_998A[(231 + i) * 3], 3);
+	for (i = 0; i < 231 * 3; i++) g_palette1[i] = g_palette1[i] / 2;
+	for (i = 239 * 3; i < 256 * 3; i++) g_palette1[i] = g_palette1[i] / 2;
 
 	GFX_SetPalette(g_palette_998A);
 }
@@ -734,7 +743,7 @@ bool GUI_Widget_Options_Click(Widget *w)
 
 				case 3:
 					/* "Are you sure you wish to restart?" */
-					if (!GUI_YesNo(0x76)) break;
+					if (!GUI_YesNo(STR_ARE_YOU_SURE_YOU_WISH_TO_RESTART)) break;
 
 					loop = false;
 					g_gameMode = GM_RESTART;
@@ -742,7 +751,7 @@ bool GUI_Widget_Options_Click(Widget *w)
 
 				case 4:
 					/* "Are you sure you wish to pick a new house?" */
-					if (!GUI_YesNo(0x77)) break;
+					if (!GUI_YesNo(STR_ARE_YOU_SURE_YOU_WISH_TO_PICK_A_NEW_HOUSE)) break;
 
 					loop = false;
 					Driver_Music_FadeOut();
@@ -755,7 +764,7 @@ bool GUI_Widget_Options_Click(Widget *w)
 
 				case 6:
 					/* "Are you sure you want to quit playing?" */
-					loop = !GUI_YesNo(0x65);
+					loop = !GUI_YesNo(STR_ARE_YOU_SURE_YOU_WANT_TO_QUIT_PLAYING);
 					g_running = loop;
 
 					Sound_Output_Feedback(0xFFFE);
@@ -804,7 +813,7 @@ static uint16 GetSavegameCount(void)
 	uint16 i;
 
 	for (i = 0;; i++) {
-		if (!File_Exists(GenerateSavegameFilename(i))) return i;
+		if (!File_Exists_Personal(GenerateSavegameFilename(i))) return i;
 	}
 }
 
@@ -824,16 +833,15 @@ static void FillSavegameDesc(bool save)
 		if (s_savegameIndexBase - i == s_savegameCountOnDisk) {
 			if (!save) continue;
 
-			strcpy(desc, String_Get_ByIndex(STR_EMPTY_SLOT_));
+			strncpy(desc, String_Get_ByIndex(STR_EMPTY_SLOT_), 50);
 			continue;
 		}
 
 		filename = GenerateSavegameFilename(s_savegameIndexBase - i);
 
-		if (!File_Exists(filename)) continue;
-
-		fileId = ChunkFile_Open(filename);
-		ChunkFile_Read(fileId, HTOBE32('NAME'), desc, 50);
+		fileId = ChunkFile_Open_Personal(filename);
+		if (fileId == FILE_INVALID) continue;
+		ChunkFile_Read(fileId, HTOBE32(CC_NAME), desc, 50);
 		ChunkFile_Close(fileId);
 		continue;
 	}
@@ -843,16 +851,15 @@ static void FillSavegameDesc(bool save)
 /**
  * Handles Click event for savegame button.
  *
- * @param key The index of the clicked button.
+ * @param index The index of the clicked button.
  * @return True if a game has been saved, False otherwise.
  */
-static bool GUI_Widget_Savegame_Click(uint16 key)
+static bool GUI_Widget_Savegame_Click(uint16 index)
 {
 	WindowDesc *desc = &g_savegameNameWindowDesc;
 	bool loop;
-	char *saveDesc = g_savegameDesc[key];
-	uint16 loc08;
-	uint16 loc0A;
+	char *saveDesc = g_savegameDesc[index];
+	bool widgetPaint;
 	bool ret;
 
 	if (*saveDesc == '[') *saveDesc = 0;
@@ -862,9 +869,9 @@ static bool GUI_Widget_Savegame_Click(uint16 key)
 	GUI_Window_Create(desc);
 
 	ret = false;
-	loc08 = 1;
+	widgetPaint = true;
 
-	if (*saveDesc == '[') key = s_savegameCountOnDisk;
+	if (*saveDesc == '[') index = s_savegameCountOnDisk;
 
 	GFX_Screen_SetActive(SCREEN_0);
 
@@ -875,27 +882,28 @@ static bool GUI_Widget_Savegame_Click(uint16 key)
 	GUI_Mouse_Show_Safe();
 
 	for (loop = true; loop; sleepIdle()) {
+		uint16 eventKey;
 		Widget *w = g_widgetLinkedListTail;
 
 		GUI_DrawText_Wrapper(NULL, 0, 0, 232, 235, 0x22);
 
-		loc0A = GUI_EditBox(saveDesc, 50, 15, g_widgetLinkedListTail, NULL, loc08);
-		loc08 = 2;
+		eventKey = GUI_EditBox(saveDesc, 50, 15, g_widgetLinkedListTail, NULL, widgetPaint);
+		widgetPaint = false;
 
-		if ((loc0A & 0x8000) == 0) continue;
+		if ((eventKey & 0x8000) == 0) continue;
 
-		GUI_Widget_MakeNormal(GUI_Widget_Get_ByIndex(w, loc0A & 0x7FFF), false);
+		GUI_Widget_MakeNormal(GUI_Widget_Get_ByIndex(w, eventKey & 0x7FFF), false);
 
-		switch (loc0A & 0x7FFF) {
-			case 0x1E:
+		switch (eventKey & 0x7FFF) {
+			case 0x1E:	/* RETURN / Save Button */
 				if (*saveDesc == 0) break;
 
-				SaveFile(GenerateSavegameFilename(s_savegameIndexBase - key), saveDesc);
+				SaveGame_SaveFile(GenerateSavegameFilename(s_savegameIndexBase - index), saveDesc);
 				loop = false;
 				ret = true;
 				break;
 
-			case 0x1F:
+			case 0x1F:	/* ESCAPE / Cancel Button */
 				loop = false;
 				ret = false;
 				FillSavegameDesc(true);
@@ -1000,8 +1008,7 @@ bool GUI_Widget_SaveLoad_Click(bool save)
 					key -= 0x1E;
 
 					if (!save) {
-						LoadFile(GenerateSavegameFilename(s_savegameIndexBase - key));
-						return true;
+						return SaveGame_LoadFile(GenerateSavegameFilename(s_savegameIndexBase - key));
 					}
 
 					if (GUI_Widget_Savegame_Click(key)) return true;
@@ -1036,16 +1043,16 @@ bool GUI_Widget_SaveLoad_Click(bool save)
 bool GUI_Widget_HOF_ClearList_Click(Widget *w)
 {
 	/* "Are you sure you want to clear the high scores?" */
-	if (GUI_YesNo(0x148)) {
+	if (GUI_YesNo(STR_ARE_YOU_SURE_YOU_WANT_TO_CLEAR_THE_HIGH_SCORES)) {
 		HallOfFameStruct *data = w->data;
 
 		memset(data, 0, 128);
 
-		if (File_Exists("SAVEFAME.DAT")) File_Delete("SAVEFAME.DAT");
+		if (File_Exists_Personal("SAVEFAME.DAT")) File_Delete_Personal("SAVEFAME.DAT");
 
 		GUI_HallOfFame_DrawData(data, true);
 
-		g_var_81E6 = true;
+		g_doQuitHOF = true;
 	}
 
 	GUI_Widget_MakeNormal(w, false);
@@ -1062,7 +1069,7 @@ bool GUI_Widget_HOF_Resume_Click(Widget *w)
 {
 	VARIABLE_NOT_USED(w);
 
-	g_var_81E6 = true;
+	g_doQuitHOF = true;
 
 	return true;
 }
@@ -1183,7 +1190,7 @@ static void GUI_FactoryWindow_FailScrollList(int16 step)
  */
 bool GUI_Production_Down_Click(Widget *w)
 {
-	bool locdi = false;
+	bool drawDetails = false;
 
 	if (g_factoryWindowSelected < 3 && (g_factoryWindowSelected + 1) < g_factoryWindowTotal) {
 		g_timerTimeout = 10;
@@ -1192,19 +1199,17 @@ bool GUI_Production_Down_Click(Widget *w)
 
 		GUI_FactoryWindow_UpdateSelection(true);
 
-		locdi = true;
+		drawDetails = true;
 	} else {
 		if (g_factoryWindowBase + 4 < g_factoryWindowTotal) {
 			g_timerTimeout = 10;
 			g_factoryWindowBase++;
-			locdi = true;
+			drawDetails = true;
 
 			GUI_FactoryWindow_ScrollList(1);
 
 			GUI_FactoryWindow_UpdateSelection(true);
 		} else {
-			locdi = false;
-
 			GUI_FactoryWindow_DrawDetails();
 
 			GUI_FactoryWindow_FailScrollList(1);
@@ -1215,7 +1220,7 @@ bool GUI_Production_Down_Click(Widget *w)
 		GUI_FactoryWindow_UpdateSelection(false);
 	}
 
-	if (locdi) GUI_FactoryWindow_DrawDetails();
+	if (drawDetails) GUI_FactoryWindow_DrawDetails();
 
 	GUI_Widget_MakeNormal(w, false);
 
@@ -1229,7 +1234,7 @@ bool GUI_Production_Down_Click(Widget *w)
  */
 bool GUI_Production_Up_Click(Widget *w)
 {
-	bool locdi = false;
+	bool drawDetails = false;
 
 	if (g_factoryWindowSelected != 0) {
 		g_timerTimeout = 10;
@@ -1238,19 +1243,17 @@ bool GUI_Production_Up_Click(Widget *w)
 
 		GUI_FactoryWindow_UpdateSelection(true);
 
-		locdi = true;
+		drawDetails = true;
 	} else {
 		if (g_factoryWindowBase != 0) {
 			g_timerTimeout = 10;
 			g_factoryWindowBase--;
-			locdi = true;
+			drawDetails = true;
 
 			GUI_FactoryWindow_ScrollList(-1);
 
 			GUI_FactoryWindow_UpdateSelection(true);
 		} else {
-			locdi = false;
-
 			GUI_FactoryWindow_DrawDetails();
 
 			GUI_FactoryWindow_FailScrollList(-1);
@@ -1261,7 +1264,7 @@ bool GUI_Production_Up_Click(Widget *w)
 		GUI_FactoryWindow_UpdateSelection(false);
 	}
 
-	if (locdi) GUI_FactoryWindow_DrawDetails();
+	if (drawDetails) GUI_FactoryWindow_DrawDetails();
 
 	GUI_Widget_MakeNormal(w, false);
 
@@ -1306,7 +1309,7 @@ static void GUI_Purchase_ShowInvoice(void)
 			oi = g_factoryWindowItems[i].objectInfo;
 			GUI_DrawText_Wrapper(String_Get_ByIndex(oi->stringID_full), 128, y, 8, 0, 0x11);
 
-			GUI_DrawText_Monospace(textBuffer, 311 - strlen(textBuffer) * 6, y, 15, 0, 6);
+			GUI_DrawText_Monospace(textBuffer, 311 - (short)strlen(textBuffer) * 6, y, 15, 0, 6);
 
 			y += 8;
 		}
@@ -1319,10 +1322,10 @@ static void GUI_Purchase_ShowInvoice(void)
 
 	snprintf(textBuffer, sizeof(textBuffer), "%d", total);
 
-	x = 311 - strlen(textBuffer) * 6;
+	x = 311 - (short)strlen(textBuffer) * 6;
 
 	/* "Total Cost :" */
-	GUI_DrawText_Wrapper(GUI_String_Get_ByIndex(0xB8), x - 3, 152, 11, 0, 0x211);
+	GUI_DrawText_Wrapper(GUI_String_Get_ByIndex(STR_TOTAL_COST_), x - 3, 152, 11, 0, 0x211);
 	GUI_DrawText_Monospace(textBuffer, x, 152, 11, 0, 6);
 
 	GUI_Mouse_Hide_Safe();
@@ -1409,19 +1412,22 @@ bool GUI_Production_BuildThis_Click(Widget *w)
  */
 bool GUI_Purchase_Plus_Click(Widget *w)
 {
-	FactoryWindowItem *item;
-	ObjectInfo *oi;
+	FactoryWindowItem *item = GUI_FactoryWindow_GetItem(g_factoryWindowSelected);
+	ObjectInfo *oi = item->objectInfo;
 	House *h = g_playerHouse;
+	bool canCreateMore = true;
+	uint16 type = item->objectType;
 
 	GUI_Widget_MakeNormal(w, false);
 
-	item = GUI_FactoryWindow_GetItem(g_factoryWindowSelected);
-	oi = item->objectInfo;
+	if (g_table_unitInfo[type].movementType != MOVEMENT_WINGER && g_table_unitInfo[type].movementType != MOVEMENT_SLITHER) {
+		if (g_starPortEnforceUnitLimit && h->unitCount >= h->unitCountMax) canCreateMore = false;
+	}
 
-	if (item->amount < oi->available && item->credits <= h->credits) {
+	if (item->amount < oi->available && item->credits <= h->credits && canCreateMore) {
 		item->amount++;
 
-		GUI_FactoryWindow_UpdateDetails();
+		GUI_FactoryWindow_UpdateDetails(item);
 
 		g_factoryWindowOrdered++;
 
@@ -1450,7 +1456,7 @@ bool GUI_Purchase_Minus_Click(Widget *w)
 	if (item->amount != 0) {
 		item->amount--;
 
-		GUI_FactoryWindow_UpdateDetails();
+		GUI_FactoryWindow_UpdateDetails(item);
 
 		g_factoryWindowOrdered--;
 
